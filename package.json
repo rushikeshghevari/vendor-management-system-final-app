@@ -1,22 +1,17 @@
 {
-  "name": "vms-mobile-temp",
+  "name": "vendor-management-system",
   "version": "1.0.0",
-  "main": "index.ts",
-  "dependencies": {
-    "expo": "~56.0.12",
-    "expo-status-bar": "~56.0.4",
-    "react": "19.2.3",
-    "react-native": "0.85.3"
-  },
-  "devDependencies": {
-    "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
-  },
+  "private": true,
+  "description": "Vendor Management System monorepo (mobile + backend)",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "private": true
+    "install:all": "npm install --prefix mobile && npm install --prefix backend",
+    "dev:mobile": "npm run start --prefix mobile",
+    "dev:mobile:tunnel": "npm run start:tunnel --prefix mobile",
+    "dev:backend": "npm run dev --prefix backend",
+    "build:backend": "npm run build --prefix backend",
+    "start:backend": "npm run start --prefix backend",
+    "typecheck:mobile": "npm run typecheck --prefix mobile",
+    "typecheck:backend": "npm run typecheck --prefix backend",
+    "typecheck": "npm run typecheck:mobile && npm run typecheck:backend"
+  }
 }

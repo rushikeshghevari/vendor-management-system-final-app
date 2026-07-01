@@ -1,0 +1,204 @@
+import { useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, View, type TextInput } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import { DeleteUserSheet } from '@/components/users/DeleteUserSheet';
+import { FilterChipRow } from '@/components/users/FilterChipRow';
+import { UserCard } from '@/components/users/UserCard';
+import { UserEmptyState } from '@/components/users/UserEmptyState';
+import { UserSearch } from '@/components/users/UserSearch';
+import { UserSkeleton } from '@/components/users/UserSkeleton';
+import { AppHeader } from '@/components/layout/AppHeader';
+import { Avatar } from '@/components/ui/Avatar';
+import { Fab } from '@/components/ui/Fab';
+import { NotificationBadge } from '@/components/ui/NotificationBadge';
+import { Pagination } from '@/components/ui/Pagination';
+import { Screen } from '@/components/ui/Screen';
+import { ALL_ROLES, ROLES, type Role } from '@/constants/roles';
+import { ROLE_LABELS } from '@/constants/roleLabels';
+import { useGetDepartmentsQuery } from '@/features/departments/api/departmentsApi';
+import { useDeleteUserMutation, useGetUsersQuery } from '@/features/users/api/usersApi';
+import type { AppUser } from '@/features/users/types';
+import { useAuth } from '@/hooks/useAuth';
+import { getErrorMessage } from '@/utils/getErrorMessage';
+import type { UsersStackParamList } from '@/navigation/types';
+
+const PAGE_SIZE = 5;
+const SKELETON_PLACEHOLDERS = [1, 2, 3, 4];
+
+const ROLE_OPTIONS: Array<{ value: Role | 'all'; label: string }> = [
+  { value: 'all', label: 'All Roles' },
+  ...ALL_ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] })),
+];
+
+const STATUS_OPTIONS: Array<{ value: 'all' | 'active' | 'inactive'; label: string }> = [
+  { value: 'all', label: 'All Status' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
+type Props = NativeStackScreenProps<UsersStackParamList, 'UserList'>;
+
+export function UserListScreen({ navigation, route }: Props) {
+  const { user } = useAuth();
+  const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
+  const searchInputRef = useRef<TextInput>(null);
+
+  const { data: users, isLoading } = useGetUsersQuery();
+  const { data: departments } = useGetDepartmentsQuery();
+  const [deleteUser] = useDeleteUserMutation();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState<Role | 'all'>(route.params?.initialRoleFilter ?? 'all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const [userToDelete, setUserToDelete] = useState<AppUser | null>(null);
+
+  const departmentOptions = useMemo(
+    () => [{ value: 'all', label: 'All Departments' }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name }))],
+    [departments],
+  );
+
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return (users ?? []).filter((item: AppUser) => {
+      const matchesRole = roleFilter === 'all' || item.role === roleFilter;
+      const matchesStatus =
+        statusFilter === 'all' || (statusFilter === 'active' ? item.isActive : !item.isActive);
+      const matchesDepartment = departmentFilter === 'all' || item.departmentId === departmentFilter;
+      const matchesQuery =
+        !query || item.name.toLowerCase().includes(query) || item.email.toLowerCase().includes(query);
+      return matchesRole && matchesStatus && matchesDepartment && matchesQuery;
+    });
+  }, [users, searchQuery, roleFilter, statusFilter, departmentFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedUsers = filteredUsers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setPage(1);
+  };
+
+  const handleAddUser = () => navigation.navigate('CreateUser');
+
+  const handleCardPress = (target: AppUser) => navigation.navigate('UserDetails', { userId: target.id });
+
+  const handleDeletePress = (target: AppUser) => {
+    if (target.role === ROLES.SUPER_ADMIN) {
+      Alert.alert('Cannot Delete Super Admin', 'The primary Super Admin account cannot be deleted.', [{ text: 'OK' }]);
+      return;
+    }
+    setUserToDelete(target);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    const target = userToDelete;
+    setUserToDelete(null);
+    try {
+      await deleteUser(target.id).unwrap();
+    } catch (error) {
+      Alert.alert('Could Not Delete User', getErrorMessage(error));
+    }
+  };
+
+  return (
+    <Screen padded={false}>
+      <AppHeader
+        title="Users"
+        leftIcon="menu-outline"
+        rightSlot={
+          <>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Search"
+              hitSlop={8}
+              onPress={() => searchInputRef.current?.focus()}
+            >
+              <Ionicons name="search-outline" size={22} color="#ffffff" />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Notifications" className="relative" hitSlop={8}>
+              <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+              <NotificationBadge count={5} />
+            </Pressable>
+            <Avatar initials={initials} size={32} online />
+          </>
+        }
+      />
+
+      <View className="flex-1 bg-surface-muted px-4 pt-4 dark:bg-surface-dark">
+        <UserSearch value={searchQuery} onChangeText={handleSearchChange} />
+
+        <View className="mt-3">
+          <Text className="mb-1.5 text-xs font-semibold text-ink-muted dark:text-slate-400">Role</Text>
+          <FilterChipRow
+            value={roleFilter}
+            options={ROLE_OPTIONS}
+            onChange={(value) => {
+              setRoleFilter(value);
+              setPage(1);
+            }}
+          />
+        </View>
+
+        <View className="mt-3">
+          <Text className="mb-1.5 text-xs font-semibold text-ink-muted dark:text-slate-400">Department</Text>
+          <FilterChipRow
+            value={departmentFilter}
+            options={departmentOptions}
+            onChange={(value) => {
+              setDepartmentFilter(value);
+              setPage(1);
+            }}
+          />
+        </View>
+
+        <View className="mt-3">
+          <Text className="mb-1.5 text-xs font-semibold text-ink-muted dark:text-slate-400">Status</Text>
+          <FilterChipRow
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onChange={(value) => {
+              setStatusFilter(value);
+              setPage(1);
+            }}
+          />
+        </View>
+
+        {isLoading ? (
+          <View className="mt-4">
+            {SKELETON_PLACEHOLDERS.map((key) => (
+              <UserSkeleton key={key} />
+            ))}
+          </View>
+        ) : pagedUsers.length === 0 ? (
+          <UserEmptyState onAddPress={handleAddUser} />
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
+            <View className="mt-4">
+              {pagedUsers.map((item) => (
+                <UserCard key={item.id} user={item} onPress={handleCardPress} onDelete={handleDeletePress} />
+              ))}
+            </View>
+            <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+          </ScrollView>
+        )}
+      </View>
+
+      <View className="absolute bottom-6 right-6">
+        <Fab accessibilityLabel="Add User" onPress={handleAddUser} />
+      </View>
+
+      <DeleteUserSheet
+        visible={userToDelete !== null}
+        userName={userToDelete?.name ?? ''}
+        onCancel={() => setUserToDelete(null)}
+        onConfirm={handleConfirmDelete}
+      />
+    </Screen>
+  );
+}

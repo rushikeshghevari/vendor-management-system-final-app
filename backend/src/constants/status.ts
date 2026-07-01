@@ -1,0 +1,75 @@
+export const QUOTATION_STATUS = {
+  DRAFT: 'draft',
+  SUBMITTED: 'submitted',
+  NEGOTIATION: 'negotiation',
+  RESUBMITTED: 'resubmitted',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  BILLED: 'billed',
+} as const;
+export type QuotationStatus = (typeof QUOTATION_STATUS)[keyof typeof QUOTATION_STATUS];
+
+export const NEGOTIATION_STATUS = {
+  PENDING: 'pending',
+  COUNTERED: 'countered',
+  ACCEPTED: 'accepted',
+  REJECTED: 'rejected',
+} as const;
+export type NegotiationStatus = (typeof NEGOTIATION_STATUS)[keyof typeof NEGOTIATION_STATUS];
+
+export const APPROVAL_DECISION = {
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+} as const;
+export type ApprovalDecision = (typeof APPROVAL_DECISION)[keyof typeof APPROVAL_DECISION];
+
+export const BILL_STATUS = {
+  DRAFT: 'draft',
+  SUBMITTED: 'submitted',
+  // CEO/Director approval stage — mirrors QUOTATION_STATUS's negotiation/resubmitted/approved.
+  NEGOTIATION: 'negotiation',
+  RESUBMITTED: 'resubmitted',
+  APPROVED: 'approved',
+  // Distinct from Accounts' own REJECTED below — see bill.service.ts scopeToOwner comment for why.
+  APPROVAL_REJECTED: 'approval_rejected',
+  CORRECTION_REQUESTED: 'correction_requested',
+  VERIFIED: 'verified',
+  REJECTED: 'rejected',
+  PAYMENT_PENDING: 'payment_pending',
+  PAID: 'paid',
+  COMPLETED: 'completed',
+} as const;
+export type BillStatus = (typeof BILL_STATUS)[keyof typeof BILL_STATUS];
+
+export const PAYMENT_STATUS = {
+  PAYMENT_PENDING: 'payment_pending',
+  PROCESSING: 'processing',
+  PAID: 'paid',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+} as const;
+export type PaymentStatus = (typeof PAYMENT_STATUS)[keyof typeof PAYMENT_STATUS];
+
+export const PAYMENT_METHOD = {
+  BANK_TRANSFER: 'bank_transfer',
+  CHEQUE: 'cheque',
+  UPI: 'upi',
+  RTGS: 'rtgs',
+  NEFT: 'neft',
+  IMPS: 'imps',
+  CASH: 'cash',
+} as const;
+export type PaymentMethod = (typeof PAYMENT_METHOD)[keyof typeof PAYMENT_METHOD];
+
+export const PAYMENT_FAILURE_REASON = {
+  BANK_TIMEOUT: 'bank_timeout',
+  UPI_FAILED: 'upi_failed',
+  CHEQUE_REJECTED: 'cheque_rejected',
+  INSUFFICIENT_BALANCE: 'insufficient_balance',
+  ACCOUNT_CLOSED: 'account_closed',
+  INVALID_IFSC: 'invalid_ifsc',
+  NETWORK_FAILURE: 'network_failure',
+  MANUAL_HOLD: 'manual_hold',
+  OTHER: 'other',
+} as const;
+export type PaymentFailureReason = (typeof PAYMENT_FAILURE_REASON)[keyof typeof PAYMENT_FAILURE_REASON];

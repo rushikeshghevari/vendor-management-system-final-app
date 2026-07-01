@@ -1,0 +1,274 @@
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+
+import { useDrawer } from '@/navigation/context/DrawerContext';
+import { useAuth } from '@/hooks/useAuth';
+import { useLogoutMutation } from '@/features/auth/api/authApi';
+import type { MainTabParamList } from '@/navigation/types';
+
+const ROLE_LABELS: Record<string, string> = {
+  super_admin: 'Super Administrator',
+  director: 'Director',
+  ceo: 'CEO',
+  department_user: 'Department User',
+  accounts: 'Accounts',
+  payment_department: 'Payment Department',
+};
+
+interface NavItem {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  activeIcon: keyof typeof Ionicons.glyphMap;
+  tab: keyof MainTabParamList;
+}
+
+interface ActionItem {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  action: 'notifications' | 'system-settings' | 'profile';
+}
+
+const PRIMARY_NAV: NavItem[] = [
+  { label: 'Dashboard', icon: 'home-outline', activeIcon: 'home', tab: 'Dashboard' },
+  { label: 'Departments', icon: 'business-outline', activeIcon: 'business', tab: 'Departments' },
+  { label: 'Users', icon: 'people-outline', activeIcon: 'people', tab: 'Users' },
+  { label: 'Vendors', icon: 'storefront-outline', activeIcon: 'storefront', tab: 'Vendors' },
+  { label: 'Quotations', icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations' },
+  { label: 'Bills', icon: 'receipt-outline', activeIcon: 'receipt', tab: 'Bills' },
+  { label: 'Payments', icon: 'card-outline', activeIcon: 'card', tab: 'Payments' },
+  { label: 'Reports', icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports' },
+];
+
+const SECONDARY_NAV: ActionItem[] = [
+  { label: 'Notifications', icon: 'notifications-outline', action: 'notifications' },
+  { label: 'System Settings', icon: 'settings-outline', action: 'system-settings' },
+  { label: 'Profile', icon: 'person-outline', action: 'profile' },
+];
+
+export function DrawerContent() {
+  const { user } = useAuth();
+  const drawer = useDrawer();
+  const [logout] = useLogoutMutation();
+  const navigation = useNavigation();
+
+  if (!drawer) return null;
+
+  const { closeDrawer, navigateToTab, activeTab, setActiveTab } = drawer;
+  const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
+  const roleLabel = (user && ROLE_LABELS[user.role]) ?? 'Team Member';
+
+  const handleTabPress = (tab: keyof MainTabParamList) => {
+    setActiveTab(tab);
+    navigateToTab(tab);
+    closeDrawer();
+  };
+
+  const handleAction = (action: ActionItem['action']) => {
+    closeDrawer();
+    if (action === 'notifications') {
+      // Climb to root navigator to reach NotificationCenter
+      let nav = navigation as unknown as { getParent?: () => unknown; navigate: (name: string) => void };
+      while (nav.getParent?.()) {
+        nav = nav.getParent!() as typeof nav;
+      }
+      nav.navigate('NotificationCenter');
+    } else if (action === 'system-settings') {
+      setActiveTab('Profile');
+      navigateToTab('Profile', { screen: 'SystemSettings' });
+    } else if (action === 'profile') {
+      setActiveTab('Profile');
+      navigateToTab('Profile');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          closeDrawer();
+          await logout();
+        },
+      },
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'bottom']}>
+      {/* Header: user info */}
+      <View style={styles.header}>
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarText}>{initials}</Text>
+        </View>
+        <Text style={styles.userName} numberOfLines={1}>{user?.name ?? 'Administrator'}</Text>
+        <Text style={styles.userRole}>{roleLabel}</Text>
+        <Text style={styles.userEmail} numberOfLines={1}>{user?.email ?? ''}</Text>
+      </View>
+
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Navigation items */}
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.section}>
+          {PRIMARY_NAV.map((item) => {
+            const isActive = activeTab === item.tab;
+            return (
+              <Pressable
+                key={item.label}
+                onPress={() => handleTabPress(item.tab)}
+                style={[styles.navItem, isActive && styles.navItemActive]}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+              >
+                {isActive && <View style={styles.activeIndicator} />}
+                <Ionicons
+                  name={isActive ? item.activeIcon : item.icon}
+                  size={20}
+                  color={isActive ? '#60a5fa' : '#94a3b8'}
+                />
+                <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.divider} />
+
+        <View style={styles.section}>
+          {SECONDARY_NAV.map((item) => (
+            <Pressable
+              key={item.label}
+              onPress={() => handleAction(item.action)}
+              style={styles.navItem}
+              accessibilityRole="button"
+              accessibilityLabel={item.label}
+            >
+              <Ionicons name={item.icon} size={20} color="#94a3b8" />
+              <Text style={styles.navLabel}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Footer: logout + version */}
+      <View style={styles.footer}>
+        <View style={styles.divider} />
+        <Pressable onPress={handleLogout} style={styles.logoutButton} accessibilityRole="button" accessibilityLabel="Logout">
+          <Ionicons name="log-out-outline" size={20} color="#f87171" />
+          <Text style={styles.logoutLabel}>Logout</Text>
+        </Pressable>
+        <Text style={styles.version}>EKAM ERP · v1.0.0</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  avatarCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#1e88e5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  avatarText: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  userName: {
+    color: '#f1f5f9',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  userRole: {
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  userEmail: {
+    color: '#64748b',
+    fontSize: 11,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(148, 163, 184, 0.08)',
+    marginHorizontal: 0,
+  },
+  scroll: {
+    flex: 1,
+  },
+  section: {
+    paddingVertical: 6,
+  },
+  navItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 13,
+    position: 'relative',
+  },
+  navItemActive: {
+    backgroundColor: 'rgba(96, 165, 250, 0.10)',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+    backgroundColor: '#60a5fa',
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  navLabel: {
+    marginLeft: 14,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#94a3b8',
+  },
+  navLabelActive: {
+    color: '#60a5fa',
+    fontWeight: '600',
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  logoutLabel: {
+    marginLeft: 14,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f87171',
+  },
+  version: {
+    color: '#334155',
+    fontSize: 11,
+    paddingBottom: 4,
+  },
+});

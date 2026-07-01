@@ -1,0 +1,120 @@
+import { Schema, model, type Document, type Types } from 'mongoose';
+
+import { QUOTATION_STATUS, type QuotationStatus } from '@/constants/status';
+
+export const QUOTATION_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
+export type QuotationPriority = (typeof QUOTATION_PRIORITIES)[number];
+
+export const QUOTATION_CURRENCIES = ['INR', 'USD', 'EUR', 'GBP'] as const;
+export type QuotationCurrency = (typeof QUOTATION_CURRENCIES)[number];
+
+export interface IQuotationPdfVersion {
+  version: number;
+  fileName: string;
+  url: string;
+  uploadedAt: Date;
+}
+
+export const DIRECTOR_DECISIONS = ['approved', 'negotiation', 'rejected'] as const;
+export type DirectorDecision = (typeof DIRECTOR_DECISIONS)[number];
+
+/**
+ * One independent record per Director — never both required, never overwritten by another
+ * Director's entry. "Pending" is never stored here; it's the absence of an entry for a given
+ * Director, computed at read time (see quotationService.buildDirectorApprovalRoster).
+ */
+export interface IDirectorApproval {
+  director: Types.ObjectId;
+  decision: DirectorDecision;
+  remarks?: string;
+  decidedAt: Date;
+}
+
+export interface IQuotation extends Document {
+  quotationCode: string;
+  vendor: Types.ObjectId;
+  department: Types.ObjectId;
+  createdBy: Types.ObjectId;
+  quotationDate: Date;
+  requiredDate: Date;
+  amount: number;
+  gst: number;
+  currency: QuotationCurrency;
+  paymentTerms: string;
+  deliveryTerms: string;
+  priority: QuotationPriority;
+  description?: string;
+  pdfFiles: IQuotationPdfVersion[];
+  remarks?: string;
+  // Director's feedback when returning a quotation for negotiation or rejecting it — kept
+  // alongside `directorApprovals` so the existing single-decision workflow fields (which
+  // still drive `status`) are completely unchanged in behavior.
+  directorRemarks?: string;
+  directorApprovals: IDirectorApproval[];
+  status: QuotationStatus;
+  isDeleted: boolean;
+  submittedAt?: Date;
+  decisionAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const pdfVersionSchema = new Schema<IQuotationPdfVersion>(
+  {
+    version: { type: Number, required: true },
+    fileName: { type: String, required: true },
+    url: { type: String, required: true },
+    uploadedAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false },
+);
+
+const directorApprovalSchema = new Schema<IDirectorApproval>(
+  {
+    director: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    decision: { type: String, enum: DIRECTOR_DECISIONS, required: true },
+    remarks: { type: String, trim: true },
+    decidedAt: { type: Date, required: true, default: Date.now },
+  },
+  { _id: false },
+);
+
+const quotationSchema = new Schema<IQuotation>(
+  {
+    quotationCode: { type: String, required: true, trim: true, uppercase: true, unique: true },
+    vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
+    department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    quotationDate: { type: Date, required: true },
+    requiredDate: { type: Date, required: true },
+    amount: { type: Number, required: true, min: 0 },
+    gst: { type: Number, required: true, min: 0, max: 100 },
+    currency: { type: String, enum: QUOTATION_CURRENCIES, default: 'INR' },
+    paymentTerms: { type: String, required: true, trim: true },
+    deliveryTerms: { type: String, required: true, trim: true },
+    priority: { type: String, enum: QUOTATION_PRIORITIES, default: 'medium' },
+    description: { type: String, trim: true },
+    // Never overwritten — every upload appends a new version; the last entry is the active one.
+    pdfFiles: { type: [pdfVersionSchema], default: [] },
+    remarks: { type: String, trim: true },
+    directorRemarks: { type: String, trim: true },
+    directorApprovals: { type: [directorApprovalSchema], default: [] },
+    status: {
+      type: String,
+      enum: Object.values(QUOTATION_STATUS),
+      default: QUOTATION_STATUS.DRAFT,
+    },
+    isDeleted: { type: Boolean, default: false },
+    submittedAt: { type: Date },
+    decisionAt: { type: Date },
+  },
+  { timestamps: true },
+);
+
+quotationSchema.index({ department: 1, status: 1 });
+quotationSchema.index({ vendor: 1 });
+// Every Department User's list/filter query is scoped by `createdBy` (see scopeToOwner) —
+// without this, that's a full collection scan on every Department User's request.
+quotationSchema.index({ createdBy: 1, status: 1 });
+
+export const Quotation = model<IQuotation>('Quotation', quotationSchema);
