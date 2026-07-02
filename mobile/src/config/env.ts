@@ -1,16 +1,11 @@
 type AppEnv = 'development' | 'staging' | 'production';
 
-function readRequired(value: string | undefined, key: string): string {
-  if (!value) {
-    throw new Error(
-      `Missing required environment variable "${key}". Did you create a .env file from .env.example?`,
-    );
-  }
-  return value;
-}
-
+// EXPO_PUBLIC_* vars are inlined by Metro at build time from .env.
+// If the build ran without a .env (e.g. EAS without env secrets configured),
+// the value is undefined and the app must not crash — it will show API errors
+// instead, which is the correct UX for a misconfigured build.
 export const env = {
-  apiUrl: readRequired(process.env.EXPO_PUBLIC_API_URL, 'EXPO_PUBLIC_API_URL'),
+  apiUrl: process.env.EXPO_PUBLIC_API_URL ?? '',
   apiTimeout: Number(process.env.EXPO_PUBLIC_API_TIMEOUT ?? 15000),
   appEnv: (process.env.EXPO_PUBLIC_APP_ENV ?? 'development') as AppEnv,
 } as const;
