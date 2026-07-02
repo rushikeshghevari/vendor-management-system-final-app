@@ -10,5 +10,8 @@ export const env = {
   appEnv: (process.env.EXPO_PUBLIC_APP_ENV ?? 'development') as AppEnv,
 } as const;
 
+// Startup diagnostic: confirms the URL baked into this build at Metro bundle time.
+console.log('[env] API URL:', env.apiUrl || '(empty — EXPO_PUBLIC_API_URL was not set at build time)');
+
 export const isDevelopment = env.appEnv === 'development';
 export const isProduction = env.appEnv === 'production';

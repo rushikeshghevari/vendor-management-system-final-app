@@ -12,6 +12,9 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch"
   },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
