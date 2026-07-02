@@ -12,6 +12,7 @@ import { useGetAccountsBillStatsQuery, useGetBillsQuery } from '@/features/bills
 import { useGetUnreadNotificationCountQuery } from '@/features/notifications/api/notificationsApi';
 import { useGetAccountsPaymentStatsQuery } from '@/features/payments/api/paymentsApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawer } from '@/navigation/context/DrawerContext';
 import type { AccountsTabParamList } from '@/navigation/types';
 
 type Props = BottomTabScreenProps<AccountsTabParamList, 'Dashboard'>;
@@ -70,6 +71,8 @@ function SectionHeader({ title, onViewAll }: { title: string; onViewAll?: () => 
 
 export function AccountsDashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const drawer = useDrawer();
+  if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
   const { data: stats, isLoading: isLoadingStats, isFetching: isFetchingStats, refetch: refetchStats } = useGetAccountsBillStatsQuery();
@@ -131,7 +134,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
     <Screen padded={false} className="bg-surface-muted dark:bg-surface-dark">
       <AppHeader
         variant="brand"
-        onLeftPress={() => navigation.navigate('Profile')}
+        onLeftPress={() => drawer?.openDrawer()}
         rightSlot={
           <>
             <NotificationBell size={24} color="#212121" />

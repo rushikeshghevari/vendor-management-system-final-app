@@ -212,6 +212,19 @@ export function VendorDetailsScreen({ navigation, route }: Props) {
           )}
         </DashboardCard>
 
+        <DashboardCard className="mt-4">
+          <View className="flex-row items-center gap-2">
+            <Text style={{ fontSize: 20 }}>🤖</Text>
+            <Text className="flex-1 text-sm font-semibold text-ink dark:text-slate-200">AI Insights</Text>
+            <View className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+              <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Coming Soon</Text>
+            </View>
+          </View>
+          <Text className="mt-2 text-xs text-ink-muted dark:text-slate-400">
+            AI-powered vendor performance scoring, compliance checks, and procurement insights will appear here.
+          </Text>
+        </DashboardCard>
+
         <Button label="Edit Vendor" onPress={() => navigation.navigate('EditVendor', { vendorId: vendor.id })} className="mt-5" />
 
         {vendor.status !== 'active' ? (

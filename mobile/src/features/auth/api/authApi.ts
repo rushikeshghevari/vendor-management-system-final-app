@@ -1,3 +1,5 @@
+import { Alert } from 'react-native';
+
 import { baseApi } from '@/store/baseApi';
 import { secureStorage } from '@/utils/secureStorage';
 import { setCredentials, loggedOut } from '@/features/auth/authSlice';
@@ -14,16 +16,34 @@ export const authApi = baseApi.injectEndpoints({
       onQueryStarted: async (_arg, { queryFulfilled, dispatch }) => {
         try {
           const { data } = await queryFulfilled;
-          await secureStorage.setTokens(data.accessToken, data.refreshToken);
+
+          // Token storage is best-effort — a SecureStore failure (Android Keystore
+          // unavailability, first-boot timing, etc.) must never block the user from
+          // reaching the dashboard. secureStorage already falls back to AsyncStorage
+          // internally, so this catch only fires if both stores fail.
+          try {
+            await secureStorage.setTokens(data.accessToken, data.refreshToken);
+          } catch (storageErr) {
+            const msg = storageErr instanceof Error ? storageErr.message : String(storageErr);
+            console.error('[authApi] token storage failed — session will not persist across restarts:', msg);
+            Alert.alert(
+              'Session Warning',
+              'Your session could not be saved. You will need to log in again when the app restarts.',
+            );
+          }
+
+          // Always dispatch credentials after a successful HTTP 200, regardless of
+          // whether token storage succeeded — isAuthenticated drives navigation.
           dispatch(setCredentials(data.user));
           // Wipe any RTK Query cache left over from a previous session on this device
           // (e.g. a Super Admin's unscoped Vendor list) — without this, a different
           // user logging in on the same app instance could briefly see stale,
           // wrongly-scoped cached data before the next refetch.
           dispatch(baseApi.util.resetApiState());
-        } catch {
+        } catch (err) {
           // Invalid credentials / validation error — surfaced via the mutation's
           // `error` state in the component; nothing to clean up here.
+          console.error('[authApi] login failed:', JSON.stringify(err));
         }
       },
       invalidatesTags: ['Auth', 'User'],

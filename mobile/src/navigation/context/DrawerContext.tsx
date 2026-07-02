@@ -1,12 +1,10 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { Animated, Dimensions } from 'react-native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-
-import type { MainTabParamList } from '@/navigation/types';
 
 export const DRAWER_WIDTH = Math.min(Math.round(Dimensions.get('window').width * 0.82), 320);
 
-type TabNav = BottomTabNavigationProp<MainTabParamList>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTabNav = { navigate: (name: any, params?: any) => void };
 
 interface DrawerContextValue {
   isOpen: boolean;
@@ -14,27 +12,27 @@ interface DrawerContextValue {
   closeDrawer: () => void;
   translateX: Animated.Value;
   backdropOpacity: Animated.Value;
-  activeTab: keyof MainTabParamList;
-  setActiveTab: (tab: keyof MainTabParamList) => void;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
   /** Call this from any tab screen on every render to keep the ref up to date. */
-  setTabNavigation: (nav: TabNav) => void;
-  /** Navigate within the Super Admin tab navigator. */
-  navigateToTab: (tab: keyof MainTabParamList, params?: Record<string, unknown>) => void;
+  setTabNavigation: (nav: AnyTabNav) => void;
+  /** Navigate within the tab navigator this drawer controls. */
+  navigateToTab: (tab: string, params?: Record<string, unknown>) => void;
 }
 
 const DrawerContext = createContext<DrawerContextValue | null>(null);
 
-/** Returns null when called outside a DrawerProvider (non-Super-Admin roles). */
+/** Returns null when called outside a DrawerProvider (no drawer for this navigator). */
 export function useDrawer(): DrawerContextValue | null {
   return useContext(DrawerContext);
 }
 
 export function DrawerProvider({ children }: { children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<keyof MainTabParamList>('Dashboard');
+  const [activeTab, setActiveTab] = useState<string>('Dashboard');
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const tabNavRef = useRef<TabNav | null>(null);
+  const tabNavRef = useRef<AnyTabNav | null>(null);
 
   const openDrawer = useCallback(() => {
     setIsOpen(true);
@@ -71,14 +69,13 @@ export function DrawerProvider({ children }: { children: React.ReactNode }) {
     ]).start(() => setIsOpen(false));
   }, [translateX, backdropOpacity]);
 
-  const setTabNavigation = useCallback((nav: TabNav) => {
+  const setTabNavigation = useCallback((nav: AnyTabNav) => {
     tabNavRef.current = nav;
   }, []);
 
   const navigateToTab = useCallback(
-    (tab: keyof MainTabParamList, params?: Record<string, unknown>) => {
+    (tab: string, params?: Record<string, unknown>) => {
       if (tabNavRef.current) {
-        // @ts-expect-error polymorphic navigate overloads; all valid tab names accepted
         tabNavRef.current.navigate(tab, params);
       }
     },

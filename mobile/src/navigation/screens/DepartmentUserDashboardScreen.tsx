@@ -13,6 +13,7 @@ import { useGetMyPaymentStatsQuery } from '@/features/payments/api/paymentsApi';
 import { useGetQuotationsQuery } from '@/features/quotations/api/quotationsApi';
 import { useGetVendorsQuery } from '@/features/vendors/api/vendorsApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawer } from '@/navigation/context/DrawerContext';
 import type { DepartmentUserTabParamList } from '@/navigation/types';
 
 type Props = BottomTabScreenProps<DepartmentUserTabParamList, 'Dashboard'>;
@@ -86,6 +87,9 @@ function AnalyticsBar({ label, value, max, color }: { label: string; value: numb
 
 export function DepartmentUserDashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const drawer = useDrawer();
+  // Register tab nav so drawer can switch tabs from any screen.
+  if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
   const { data: vendors, isLoading: isLoadingVendors, refetch: refetchVendors } = useGetVendorsQuery();
@@ -164,7 +168,7 @@ export function DepartmentUserDashboardScreen({ navigation }: Props) {
     <Screen padded={false} className="bg-surface-muted dark:bg-surface-dark">
       <AppHeader
         variant="brand"
-        onLeftPress={() => navigation.navigate('Profile')}
+        onLeftPress={() => drawer?.openDrawer()}
         rightSlot={
           <>
             <NotificationBell size={24} color="#212121" />

@@ -1,43 +1,44 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { Text } from 'react-native';
 
 import { PaymentsNavigator } from '@/navigation/PaymentsNavigator';
 import { PaymentDashboardScreen } from '@/navigation/screens/PaymentDashboardScreen';
+import { ComingSoonScreen } from '@/navigation/screens/ComingSoonScreen';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
+import { DrawerProvider } from '@/navigation/context/DrawerContext';
+import { DrawerShell } from '@/navigation/DrawerShell';
 import type { PaymentTabParamList } from '@/navigation/types';
 
 const PaymentTab = createBottomTabNavigator<PaymentTabParamList>();
 
-const PAYMENT_ICONS: Record<keyof PaymentTabParamList, keyof typeof Ionicons.glyphMap> = {
-  Dashboard: 'home',
-  Payments: 'card',
-  Profile: 'person',
-};
+function ReportsPlaceholder() {
+  return <ComingSoonScreen title="Reports" icon="bar-chart" />;
+}
 
-/** Payment Department — full Payment Module access (create, process, mark paid/completed/failed, retry). */
-export function PaymentNavigator() {
+function PaymentTabs() {
   return (
     <PaymentTab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#1e88e5',
-        tabBarInactiveTintColor: '#94a3b8',
-        tabBarIcon: ({ color, size, focused }) => {
-          const iconName = PAYMENT_ICONS[route.name as keyof PaymentTabParamList];
-          const resolvedName = focused ? iconName : (`${iconName}-outline` as keyof typeof Ionicons.glyphMap);
-          return <Ionicons name={resolvedName} size={size} color={color} />;
-        },
-        tabBarLabel: ({ color, children }) => (
-          <Text className="text-[11px]" style={{ color, fontWeight: '600' }}>
-            {children}
-          </Text>
-        ),
-      })}
+        // Tab bar hidden — drawer provides full navigation.
+        tabBarStyle: { display: 'none' },
+      }}
     >
       <PaymentTab.Screen name="Dashboard" component={PaymentDashboardScreen} />
       <PaymentTab.Screen name="Payments" component={PaymentsNavigator} />
+      <PaymentTab.Screen name="Reports" component={ReportsPlaceholder} />
       <PaymentTab.Screen name="Profile" component={ProfileNavigator} />
     </PaymentTab.Navigator>
+  );
+}
+
+/** Payment Department — full Payment Module access (create, process, mark paid/completed/failed, retry).
+ *  Drawer replaces the bottom tab bar. */
+export function PaymentNavigator() {
+  return (
+    <DrawerProvider>
+      <DrawerShell>
+        <PaymentTabs />
+      </DrawerShell>
+    </DrawerProvider>
   );
 }

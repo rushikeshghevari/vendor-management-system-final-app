@@ -7,3 +7,6 @@ node_modules/
 *.log
 .env
 .env*.local
+
+# Cloudflare tunnel temp logs
+/tmp/cf-tunnel-*.log

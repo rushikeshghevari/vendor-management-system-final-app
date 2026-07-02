@@ -1,12 +1,9 @@
-import { useEffect } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
-import { Animated } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-import { DrawerContent } from '@/components/layout/DrawerContent';
-import { DrawerProvider, DRAWER_WIDTH, useDrawer } from '@/navigation/context/DrawerContext';
 import { BillsNavigator } from '@/navigation/BillsNavigator';
 import { DepartmentsNavigator } from '@/navigation/DepartmentsNavigator';
+import { DrawerProvider } from '@/navigation/context/DrawerContext';
+import { DrawerShell } from '@/navigation/DrawerShell';
 import { PaymentsNavigator } from '@/navigation/PaymentsNavigator';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
 import { QuotationsNavigator } from '@/navigation/QuotationsNavigator';
@@ -23,7 +20,7 @@ function SuperAdminTabs() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        // Tab bar is entirely hidden — the drawer replaces it for Super Admin.
+        // Tab bar hidden — drawer replaces it for Super Admin.
         tabBarStyle: { display: 'none' },
       }}
     >
@@ -40,69 +37,12 @@ function SuperAdminTabs() {
   );
 }
 
-function SuperAdminNavigatorInner() {
-  const drawer = useDrawer();
-  if (!drawer) return <SuperAdminTabs />;
-
-  const { isOpen, closeDrawer, translateX, backdropOpacity } = drawer;
-
-  // Intercept Android hardware back button to close drawer when open.
-  useEffect(() => {
-    if (!isOpen) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      closeDrawer();
-      return true;
-    });
-    return () => sub.remove();
-  }, [isOpen, closeDrawer]);
-
-  return (
-    <View style={styles.root}>
-      {/* Main content — always visible behind the drawer */}
-      <SuperAdminTabs />
-
-      {/* Backdrop — always rendered but pointer-events controlled by isOpen */}
-      <Animated.View
-        pointerEvents={isOpen ? 'box-only' : 'none'}
-        style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]}
-      >
-        <Pressable style={StyleSheet.absoluteFill} onPress={closeDrawer} />
-      </Animated.View>
-
-      {/* Drawer panel — always rendered, slides off-screen at −DRAWER_WIDTH when closed */}
-      <Animated.View style={[styles.drawer, { transform: [{ translateX }] }]}>
-        <DrawerContent />
-      </Animated.View>
-    </View>
-  );
-}
-
 export function SuperAdminNavigator() {
   return (
     <DrawerProvider>
-      <SuperAdminNavigatorInner />
+      <DrawerShell>
+        <SuperAdminTabs />
+      </DrawerShell>
     </DrawerProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  backdrop: {
-    backgroundColor: '#000000',
-  },
-  drawer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: DRAWER_WIDTH,
-    // Elevation / shadow so the drawer clearly floats above content.
-    elevation: 24,
-    shadowColor: '#000000',
-    shadowOffset: { width: 6, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-  },
-});

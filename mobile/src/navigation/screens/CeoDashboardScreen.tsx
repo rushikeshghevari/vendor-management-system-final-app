@@ -11,6 +11,7 @@ import { useGetCeoBillStatsQuery } from '@/features/bills/api/billsApi';
 import { useGetUnreadNotificationCountQuery } from '@/features/notifications/api/notificationsApi';
 import { useGetCeoQuotationStatsQuery } from '@/features/quotations/api/quotationsApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawer } from '@/navigation/context/DrawerContext';
 import type { CeoTabParamList } from '@/navigation/types';
 
 type Props = BottomTabScreenProps<CeoTabParamList, 'Dashboard'>;
@@ -69,6 +70,8 @@ function SectionHeader({ title, onViewAll }: { title: string; onViewAll?: () => 
 
 export function CeoDashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const drawer = useDrawer();
+  if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
   const { data: stats, isLoading, isFetching, refetch } = useGetCeoQuotationStatsQuery();
@@ -110,7 +113,7 @@ export function CeoDashboardScreen({ navigation }: Props) {
     <Screen padded={false} className="bg-surface-muted dark:bg-surface-dark">
       <AppHeader
         variant="brand"
-        onLeftPress={() => navigation.navigate('Profile')}
+        onLeftPress={() => drawer?.openDrawer()}
         rightSlot={
           <>
             <NotificationBell size={24} color="#212121" />

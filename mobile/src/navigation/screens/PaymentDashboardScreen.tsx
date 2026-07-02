@@ -10,6 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { useGetPaymentDeptStatsQuery } from '@/features/payments/api/paymentsApi';
 import { useGetUnreadNotificationCountQuery } from '@/features/notifications/api/notificationsApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useDrawer } from '@/navigation/context/DrawerContext';
 import type { PaymentTabParamList } from '@/navigation/types';
 
 type Props = BottomTabScreenProps<PaymentTabParamList, 'Dashboard'>;
@@ -83,6 +84,8 @@ function AnalyticsBar({ label, value, max, color }: { label: string; value: numb
 
 export function PaymentDashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const drawer = useDrawer();
+  if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
   const { data: stats, isLoading, isFetching, refetch } = useGetPaymentDeptStatsQuery();
@@ -127,7 +130,7 @@ export function PaymentDashboardScreen({ navigation }: Props) {
     <Screen padded={false} className="bg-surface-muted dark:bg-surface-dark">
       <AppHeader
         variant="brand"
-        onLeftPress={() => navigation.navigate('Profile')}
+        onLeftPress={() => drawer?.openDrawer()}
         rightSlot={
           <>
             <NotificationBell size={24} color="#212121" />

@@ -192,7 +192,7 @@ export const quotationsApi = baseApi.injectEndpoints({
       ],
     }),
 
-    // FormData flows through axiosBaseQuery's own multipart handling — still a normal
+    // FormData flows through BaseQuery's own multipart handling — still a normal
     // RTK Query mutation, never a manual axios call outside the RTK Query cache.
     uploadQuotationPdf: builder.mutation<Quotation, { id: string; formData: FormData }>({
       query: ({ id, formData }) => ({ url: `/quotations/${id}/pdf`, method: 'POST', data: formData }),

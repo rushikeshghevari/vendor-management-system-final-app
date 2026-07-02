@@ -122,6 +122,19 @@ export function PaymentDetailsScreen({ navigation, route }: Props) {
           <PaymentTimeline history={payment.history} />
         </DashboardCard>
 
+        <DashboardCard className="mt-4">
+          <View className="flex-row items-center gap-2">
+            <Text style={{ fontSize: 20 }}>🤖</Text>
+            <Text className="flex-1 text-sm font-semibold text-ink dark:text-slate-200">AI Insights</Text>
+            <View className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+              <Text className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Coming Soon</Text>
+            </View>
+          </View>
+          <Text className="mt-2 text-xs text-ink-muted dark:text-slate-400">
+            AI-powered payment fraud detection, vendor analytics, and cash flow predictions will appear here.
+          </Text>
+        </DashboardCard>
+
         {canProcess && payment.status === 'payment_pending' ? (
           <Button
             label="Start Processing"

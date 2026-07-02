@@ -6,7 +6,6 @@ import { useNavigation } from '@react-navigation/native';
 import { useDrawer } from '@/navigation/context/DrawerContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useLogoutMutation } from '@/features/auth/api/authApi';
-import type { MainTabParamList } from '@/navigation/types';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Administrator',
@@ -17,34 +16,89 @@ const ROLE_LABELS: Record<string, string> = {
   payment_department: 'Payment Department',
 };
 
-interface NavItem {
+interface TabNavItem {
+  kind: 'tab';
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   activeIcon: keyof typeof Ionicons.glyphMap;
-  tab: keyof MainTabParamList;
+  tab: string;
 }
 
-interface ActionItem {
+interface ActionNavItem {
+  kind: 'action';
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   action: 'notifications' | 'system-settings' | 'profile';
 }
 
-const PRIMARY_NAV: NavItem[] = [
-  { label: 'Dashboard', icon: 'home-outline', activeIcon: 'home', tab: 'Dashboard' },
-  { label: 'Departments', icon: 'business-outline', activeIcon: 'business', tab: 'Departments' },
-  { label: 'Users', icon: 'people-outline', activeIcon: 'people', tab: 'Users' },
-  { label: 'Vendors', icon: 'storefront-outline', activeIcon: 'storefront', tab: 'Vendors' },
-  { label: 'Quotations', icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations' },
-  { label: 'Bills', icon: 'receipt-outline', activeIcon: 'receipt', tab: 'Bills' },
-  { label: 'Payments', icon: 'card-outline', activeIcon: 'card', tab: 'Payments' },
-  { label: 'Reports', icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports' },
+type NavEntry = TabNavItem | ActionNavItem;
+
+// ─── Per-role primary navigation ────────────────────────────────────────────
+
+const NAV_SUPER_ADMIN: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard',   icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'   },
+  { kind: 'tab', label: 'Departments', icon: 'business-outline',      activeIcon: 'business',      tab: 'Departments' },
+  { kind: 'tab', label: 'Users',       icon: 'people-outline',        activeIcon: 'people',        tab: 'Users'       },
+  { kind: 'tab', label: 'Vendors',     icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'     },
+  { kind: 'tab', label: 'Quotations',  icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations'  },
+  { kind: 'tab', label: 'Bills',       icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'       },
+  { kind: 'tab', label: 'Payments',    icon: 'card-outline',          activeIcon: 'card',          tab: 'Payments'    },
+  { kind: 'tab', label: 'Reports',     icon: 'bar-chart-outline',     activeIcon: 'bar-chart',     tab: 'Reports'     },
 ];
 
-const SECONDARY_NAV: ActionItem[] = [
-  { label: 'Notifications', icon: 'notifications-outline', action: 'notifications' },
-  { label: 'System Settings', icon: 'settings-outline', action: 'system-settings' },
-  { label: 'Profile', icon: 'person-outline', action: 'profile' },
+const NAV_DEPARTMENT_USER: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard',  icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'  },
+  { kind: 'tab', label: 'Vendors',    icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'    },
+  { kind: 'tab', label: 'Quotations', icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations' },
+  { kind: 'tab', label: 'Bills',      icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'      },
+  { kind: 'tab', label: 'Payments',   icon: 'card-outline',          activeIcon: 'card',          tab: 'Payments'   },
+];
+
+const NAV_CEO: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard',          icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'          },
+  { kind: 'tab', label: 'Quotation Approvals',icon: 'document-text-outline', activeIcon: 'document-text', tab: 'PendingQuotations'  },
+  { kind: 'tab', label: 'Bill Approvals',     icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'PendingBillApprovals'},
+  { kind: 'tab', label: 'Reports',            icon: 'bar-chart-outline',     activeIcon: 'bar-chart',     tab: 'Reports'            },
+];
+
+const NAV_DIRECTOR: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'          },
+  { kind: 'tab', label: 'Quotation Reviews',icon: 'document-text-outline', activeIcon: 'document-text', tab: 'PendingQuotations'  },
+  { kind: 'tab', label: 'Bill Reviews',    icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'PendingBillApprovals'},
+  { kind: 'tab', label: 'Reports',         icon: 'bar-chart-outline',     activeIcon: 'bar-chart',     tab: 'Reports'            },
+];
+
+const NAV_ACCOUNTS: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard', icon: 'home-outline',      activeIcon: 'home',    tab: 'Dashboard' },
+  { kind: 'tab', label: 'Bills',     icon: 'receipt-outline',   activeIcon: 'receipt', tab: 'Bills'     },
+  { kind: 'tab', label: 'Payments',  icon: 'card-outline',      activeIcon: 'card',    tab: 'Payments'  },
+  { kind: 'tab', label: 'Reports',   icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports' },
+];
+
+const NAV_PAYMENT: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard', icon: 'home-outline',      activeIcon: 'home',      tab: 'Dashboard' },
+  { kind: 'tab', label: 'Payments',  icon: 'card-outline',      activeIcon: 'card',      tab: 'Payments'  },
+  { kind: 'tab', label: 'Reports',   icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports'   },
+];
+
+const ROLE_PRIMARY_NAV: Record<string, TabNavItem[]> = {
+  super_admin:        NAV_SUPER_ADMIN,
+  department_user:    NAV_DEPARTMENT_USER,
+  ceo:                NAV_CEO,
+  director:           NAV_DIRECTOR,
+  accounts:           NAV_ACCOUNTS,
+  payment_department: NAV_PAYMENT,
+};
+
+const SECONDARY_NAV: ActionNavItem[] = [
+  { kind: 'action', label: 'Notifications', icon: 'notifications-outline', action: 'notifications' },
+  { kind: 'action', label: 'Profile',        icon: 'person-outline',        action: 'profile'        },
+];
+
+const SECONDARY_NAV_SUPER_ADMIN: ActionNavItem[] = [
+  { kind: 'action', label: 'Notifications',   icon: 'notifications-outline', action: 'notifications'   },
+  { kind: 'action', label: 'System Settings', icon: 'settings-outline',      action: 'system-settings' },
+  { kind: 'action', label: 'Profile',          icon: 'person-outline',        action: 'profile'          },
 ];
 
 export function DrawerContent() {
@@ -56,19 +110,23 @@ export function DrawerContent() {
   if (!drawer) return null;
 
   const { closeDrawer, navigateToTab, activeTab, setActiveTab } = drawer;
-  const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
-  const roleLabel = (user && ROLE_LABELS[user.role]) ?? 'Team Member';
 
-  const handleTabPress = (tab: keyof MainTabParamList) => {
+  const role = user?.role ?? 'department_user';
+  const primaryNav = ROLE_PRIMARY_NAV[role] ?? NAV_DEPARTMENT_USER;
+  const secondaryNav = role === 'super_admin' ? SECONDARY_NAV_SUPER_ADMIN : SECONDARY_NAV;
+
+  const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
+  const roleLabel = ROLE_LABELS[role] ?? 'Team Member';
+
+  const handleTabPress = (tab: string) => {
     setActiveTab(tab);
     navigateToTab(tab);
     closeDrawer();
   };
 
-  const handleAction = (action: ActionItem['action']) => {
+  const handleAction = (action: ActionNavItem['action']) => {
     closeDrawer();
     if (action === 'notifications') {
-      // Climb to root navigator to reach NotificationCenter
       let nav = navigation as unknown as { getParent?: () => unknown; navigate: (name: string) => void };
       while (nav.getParent?.()) {
         nav = nav.getParent!() as typeof nav;
@@ -115,7 +173,7 @@ export function DrawerContent() {
       {/* Navigation items */}
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          {PRIMARY_NAV.map((item) => {
+          {primaryNav.map((item) => {
             const isActive = activeTab === item.tab;
             return (
               <Pressable
@@ -142,7 +200,7 @@ export function DrawerContent() {
         <View style={styles.divider} />
 
         <View style={styles.section}>
-          {SECONDARY_NAV.map((item) => (
+          {secondaryNav.map((item) => (
             <Pressable
               key={item.label}
               onPress={() => handleAction(item.action)}

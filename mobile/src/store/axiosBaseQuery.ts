@@ -29,8 +29,11 @@ export const axiosBaseQuery =
         params,
         headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
       });
+      console.log(`[http] ${method} ${url} → ${result.status}`);
       return { data: result.data.data };
     } catch (error) {
-      return { error: normalizeApiError(error) };
+      const normalized = normalizeApiError(error);
+      console.error(`[http] ${method} ${url} → ERROR`, JSON.stringify(normalized));
+      return { error: normalized };
     }
   };

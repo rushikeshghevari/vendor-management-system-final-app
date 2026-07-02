@@ -1,47 +1,46 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
-import { Text } from 'react-native';
 
 import { BillsNavigator } from '@/navigation/BillsNavigator';
 import { DirectorDashboardScreen } from '@/navigation/screens/DirectorDashboardScreen';
+import { ComingSoonScreen } from '@/navigation/screens/ComingSoonScreen';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
 import { QuotationsNavigator } from '@/navigation/QuotationsNavigator';
+import { DrawerProvider } from '@/navigation/context/DrawerContext';
+import { DrawerShell } from '@/navigation/DrawerShell';
 import type { DirectorTabParamList } from '@/navigation/types';
 
 const DirectorTab = createBottomTabNavigator<DirectorTabParamList>();
 
-const DIRECTOR_ICONS: Record<keyof DirectorTabParamList, keyof typeof Ionicons.glyphMap> = {
-  Dashboard: 'home',
-  PendingQuotations: 'document-text',
-  PendingBillApprovals: 'receipt',
-  Profile: 'person',
-};
+function ReportsPlaceholder() {
+  return <ComingSoonScreen title="Reports" icon="bar-chart" />;
+}
 
-/** Director only ever reviews Quotations (read-only — buttons are hidden inside the shared
- *  Quotation screens for this role) — no Vendor, Bill, or Accounts access. */
-export function DirectorNavigator() {
+function DirectorTabs() {
   return (
     <DirectorTab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#1e88e5',
-        tabBarInactiveTintColor: '#94a3b8',
-        tabBarIcon: ({ color, size, focused }) => {
-          const iconName = DIRECTOR_ICONS[route.name as keyof DirectorTabParamList];
-          const resolvedName = focused ? iconName : (`${iconName}-outline` as keyof typeof Ionicons.glyphMap);
-          return <Ionicons name={resolvedName} size={size} color={color} />;
-        },
-        tabBarLabel: ({ color, children }) => (
-          <Text className="text-[11px]" style={{ color, fontWeight: '600' }}>
-            {children}
-          </Text>
-        ),
-      })}
+        // Tab bar hidden — drawer provides full navigation.
+        tabBarStyle: { display: 'none' },
+      }}
     >
       <DirectorTab.Screen name="Dashboard" component={DirectorDashboardScreen} />
       <DirectorTab.Screen name="PendingQuotations" component={QuotationsNavigator} options={{ title: 'Quotations' }} />
       <DirectorTab.Screen name="PendingBillApprovals" component={BillsNavigator} options={{ title: 'Bills' }} />
+      <DirectorTab.Screen name="Reports" component={ReportsPlaceholder} />
       <DirectorTab.Screen name="Profile" component={ProfileNavigator} />
     </DirectorTab.Navigator>
+  );
+}
+
+/** Director — Quotation and Bill reviews (read-only, role-gated inside shared screens).
+ *  Drawer replaces the bottom tab bar. */
+export function DirectorNavigator() {
+  return (
+    <DrawerProvider>
+      <DrawerShell>
+        <DirectorTabs />
+      </DrawerShell>
+    </DrawerProvider>
   );
 }

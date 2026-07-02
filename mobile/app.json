@@ -25,7 +25,19 @@
     "plugins": [
       "expo-secure-store",
       "expo-font",
-      "expo-asset"
-    ]
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1ec5e834-ec9a-4b64-91d4-9fb0df3dddff"
+      }
+    }
   }
 }

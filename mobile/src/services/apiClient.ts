@@ -52,7 +52,11 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as RetryableRequestConfig | undefined;
 
-    if (error.response?.status !== 401 || !originalRequest || originalRequest._retried) {
+    // A 401 on the login route means wrong credentials, not an expired token —
+    // skip the refresh cycle entirely and let the error surface to the component.
+    const isAuthRoute = originalRequest?.url?.includes('/auth/login') || originalRequest?.url?.includes('/auth/refresh');
+
+    if (error.response?.status !== 401 || !originalRequest || originalRequest._retried || isAuthRoute) {
       return Promise.reject(error);
     }
 

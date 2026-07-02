@@ -103,6 +103,7 @@ export type AccountsTabParamList = {
   Bills: NavigatorScreenParams<AccountsBillsStackParamList> | undefined;
   // Read-only — Accounts can search/filter/view but never process a payment.
   Payments: NavigatorScreenParams<PaymentsStackParamList> | undefined;
+  Reports: undefined;
   Profile: undefined;
 };
 
@@ -120,6 +121,7 @@ export type DirectorTabParamList = {
   // Reuses the same BillsStackParamList/BillsNavigator Department Users use — gated by role
   // inside BillListScreen/BillDetailsScreen, the same pattern PendingQuotations already uses.
   PendingBillApprovals: NavigatorScreenParams<BillsStackParamList> | undefined;
+  Reports: undefined;
   Profile: undefined;
 };
 
@@ -130,6 +132,7 @@ export type CeoTabParamList = {
   Dashboard: undefined;
   PendingQuotations: NavigatorScreenParams<QuotationsStackParamList> | undefined;
   PendingBillApprovals: NavigatorScreenParams<BillsStackParamList> | undefined;
+  Reports: undefined;
   Profile: undefined;
 };
 
@@ -137,6 +140,7 @@ export type CeoTabParamList = {
 export type PaymentTabParamList = {
   Dashboard: undefined;
   Payments: NavigatorScreenParams<PaymentsStackParamList> | undefined;
+  Reports: undefined;
   Profile: undefined;
 };
 
