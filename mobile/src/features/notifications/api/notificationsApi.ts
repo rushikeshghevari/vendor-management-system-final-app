@@ -148,6 +148,16 @@ export const notificationsApi = baseApi.injectEndpoints({
       query: () => ({ url: '/users/me/devices', method: 'GET' }),
       providesTags: [{ type: 'Notification', id: 'DEVICES' }],
     }),
+
+    /** Called when user opens a notification from the system tray — marks as delivered+read. */
+    recordNotificationDelivery: builder.mutation<void, string>({
+      query: (id) => ({ url: `/notifications/${id}/delivered`, method: 'PATCH' }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Notification', id },
+        { type: 'Notification', id: 'LIST' },
+        { type: 'Notification', id: 'UNREAD_COUNT' },
+      ],
+    }),
   }),
 });
 
@@ -164,6 +174,7 @@ export const {
   useRegisterDeviceMutation,
   useRemoveDeviceMutation,
   useGetMyDevicesQuery,
+  useRecordNotificationDeliveryMutation,
 } = notificationsApi;
 
 // Polled rather than pushed — keeps the bell badge accurate even when FCM is unavailable.

@@ -37,12 +37,13 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
+          "icon": "./assets/icon.png",
           "color": "#2563EB",
           "defaultChannel": "vms_default",
           "sounds": []
         }
-      ]
+      ],
+      "expo-task-manager"
     ],
     "extra": {
       "eas": {

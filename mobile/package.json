@@ -22,6 +22,7 @@
     "expo-notifications": "~56.0.19",
     "expo-secure-store": "~56.0.4",
     "expo-status-bar": "~56.0.4",
+    "expo-task-manager": "~56.0.20",
     "nativewind": "^4.2.6",
     "react": "19.2.3",
     "react-hook-form": "^7.80.0",

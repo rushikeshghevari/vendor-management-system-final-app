@@ -2,8 +2,10 @@ import type { Request, Response } from 'express';
 
 import { userService } from '@/modules/user/user.service';
 import { User } from '@/modules/user/user.model';
+import { roleTopic, deptTopic, subscribeToTopic, unsubscribeFromAllTopics } from '@/services/push/topicManager.service';
 import { sendSuccess } from '@/utils/ApiResponse';
 import { catchAsync } from '@/utils/catchAsync';
+import type { Role } from '@/constants/roles';
 
 export const userController = {
   create: catchAsync(async (req: Request, res: Response) => {
@@ -52,37 +54,49 @@ export const userController = {
       token: string; deviceId: string; platform: 'android' | 'ios' | 'web'; deviceName?: string;
     };
     const userId = req.user!.id;
+    const role   = req.user!.role as Role;
 
-    await User.findByIdAndUpdate(
-      userId,
-      {
-        // Remove any existing entry for this deviceId, then push the new one
-        $pull: { fcmTokens: { deviceId } },
-      },
-    );
-
-    await User.findByIdAndUpdate(
+    // Remove stale entry for this deviceId before re-registering
+    await User.findByIdAndUpdate(userId, { $pull: { fcmTokens: { deviceId } } });
+    const updated = await User.findByIdAndUpdate(
       userId,
       {
         $push: {
           fcmTokens: {
-            token,
-            deviceId,
-            platform,
-            deviceName,
+            token, deviceId, platform, deviceName,
             lastUsed: new Date(),
             isActive: true,
           },
         },
       },
-    );
+      { new: true },
+    ).lean();
+
+    // Subscribe to role + all_users topics; department topic if applicable
+    const departmentId = updated?.department?.toString();
+    subscribeToTopic([token], roleTopic(role)).catch(() => null);
+    subscribeToTopic([token], 'all_users').catch(() => null);
+    if (departmentId) subscribeToTopic([token], deptTopic(departmentId)).catch(() => null);
 
     sendSuccess(res, null, 'Device registered');
   }),
 
   removeDevice: catchAsync(async (req: Request, res: Response) => {
     const { deviceId } = req.body as { deviceId: string };
-    await User.findByIdAndUpdate(req.user!.id, { $pull: { fcmTokens: { deviceId } } });
+    const userId = req.user!.id;
+    const role   = req.user!.role as Role;
+
+    // Find the token before pulling so we can unsubscribe from FCM topics
+    const userDoc = await User.findById(userId).select('fcmTokens department').lean();
+    const entry   = userDoc?.fcmTokens?.find((t) => t.deviceId === deviceId);
+
+    await User.findByIdAndUpdate(userId, { $pull: { fcmTokens: { deviceId } } });
+
+    if (entry?.token) {
+      const departmentId = userDoc?.department?.toString();
+      unsubscribeFromAllTopics([entry.token], role, departmentId).catch(() => null);
+    }
+
     sendSuccess(res, null, 'Device removed');
   }),
 

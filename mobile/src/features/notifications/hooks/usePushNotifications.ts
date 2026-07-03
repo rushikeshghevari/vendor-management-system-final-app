@@ -1,33 +1,153 @@
 /**
- * Handles FCM device token registration and incoming notification routing.
+ * FCM push notification lifecycle hook.
  *
- * Usage: Mount <PushNotificationProvider> (which calls this hook) once inside
- * the authenticated navigator so tokens are registered on every login and cleaned
- * up on logout.
+ * Responsibilities:
+ *  1. Request Android 13+ / iOS notification permissions
+ *  2. Create 5 Android notification channels
+ *  3. Register Notification Action Categories (Approve/Reject/Open, Confirm/Open)
+ *  4. Get native FCM device token → register with backend
+ *  5. Register background task for silent (data-only) pushes
+ *  6. Handle killed-app launch via getLastNotificationResponseAsync
+ *  7. Foreground + background notification responses (deep link routing + badge management)
+ *  8. Token refresh auto re-registration
+ *  9. Unregister on logout
+ *
+ * Mount once inside AuthenticatedNavigator (inside NavigationContainer).
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import type { Subscription } from 'expo-notifications';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useRegisterDeviceMutation, useRemoveDeviceMutation } from '@/features/notifications/api/notificationsApi';
+import {
+  registerBackgroundNotificationTask,
+} from '@/features/notifications/services/backgroundNotificationTask';
+import {
+  resolveDeepLinkTarget,
+  getNotificationData,
+  DEFAULT_ACTION_IDENTIFIER,
+} from '@/features/notifications/services/notificationDeepLink';
 import { useAuth } from '@/hooks/useAuth';
+import type { RootStackParamList } from '@/navigation/types';
 
 // Global handler: show alert banner when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge:  true,
+    shouldShowAlert:  true,
+    shouldPlaySound:  true,
+    shouldSetBadge:   true,
     shouldShowBanner: true,
     shouldShowList:   true,
   }),
 });
 
+// ── Channel definitions ───────────────────────────────────────────────────────
+
+async function createNotificationChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+
+  await Notifications.setNotificationChannelAsync('vms_default', {
+    name: 'VMS General',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#2563EB',
+    enableVibrate: true,
+    showBadge: true,
+    sound: 'default',
+  });
+
+  await Notifications.setNotificationChannelAsync('vms_approvals', {
+    name: 'VMS Approvals',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 400, 200, 400],
+    lightColor: '#D97706',
+    enableVibrate: true,
+    showBadge: true,
+    sound: 'default',
+    description: 'Quotation and bill approval requests',
+  });
+
+  await Notifications.setNotificationChannelAsync('vms_critical', {
+    name: 'VMS Critical Alerts',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 500, 200, 500, 200, 500],
+    lightColor: '#DC2626',
+    enableVibrate: true,
+    showBadge: true,
+    sound: 'default',
+    bypassDnd: true,
+    description: 'Critical system alerts that bypass Do Not Disturb',
+  });
+
+  await Notifications.setNotificationChannelAsync('vms_payments', {
+    name: 'VMS Payments',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 300, 150, 300],
+    lightColor: '#16A34A',
+    enableVibrate: true,
+    showBadge: true,
+    sound: 'default',
+    description: 'Payment status updates',
+  });
+
+  await Notifications.setNotificationChannelAsync('vms_silent', {
+    name: 'VMS Silent Updates',
+    importance: Notifications.AndroidImportance.MIN,
+    enableVibrate: false,
+    showBadge: false,
+    description: 'Silent background sync notifications',
+  });
+}
+
+// ── Action categories ─────────────────────────────────────────────────────────
+
+async function registerNotificationCategories(): Promise<void> {
+  // Approval action buttons (Quotation / Bill)
+  await Notifications.setNotificationCategoryAsync('vms_approval_action', [
+    {
+      identifier: 'approve',
+      buttonTitle: 'Approve',
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: 'reject',
+      buttonTitle: 'Reject',
+      options: { opensAppToForeground: true, isDestructive: true },
+    },
+    {
+      identifier: 'open',
+      buttonTitle: 'View Details',
+      options: { opensAppToForeground: true },
+    },
+  ]);
+
+  // Payment action buttons
+  await Notifications.setNotificationCategoryAsync('vms_payment_action', [
+    {
+      identifier: 'open',
+      buttonTitle: 'View Payment',
+      options: { opensAppToForeground: true },
+    },
+  ]);
+
+  // Generic info action
+  await Notifications.setNotificationCategoryAsync('vms_info_action', [
+    {
+      identifier: 'open',
+      buttonTitle: 'Open',
+      options: { opensAppToForeground: true },
+    },
+  ]);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function getDeviceId(): string {
-  // expo-device provides a stable UUID per install
   return Device.osBuildFingerprint ?? Device.modelId ?? 'unknown-device';
 }
 
@@ -41,18 +161,43 @@ function getPlatform(): 'android' | 'ios' | 'web' {
   return 'web';
 }
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
 export function usePushNotifications() {
   const { isAuthenticated } = useAuth();
   const [registerDevice] = useRegisterDeviceMutation();
   const [removeDevice]   = useRemoveDeviceMutation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const notificationListener = useRef<Subscription | null>(null);
   const responseListener     = useRef<Subscription | null>(null);
   const registeredTokenRef   = useRef<string | null>(null);
   const deviceIdRef          = useRef<string>(getDeviceId());
 
+  /** Navigate to the resource the notification refers to */
+  const handleNotificationResponse = useCallback(
+    (response: Notifications.NotificationResponse) => {
+      const data = getNotificationData(response);
+      const target = resolveDeepLinkTarget(data);
+      if (!target) return;
+
+      if (target.rootScreen === 'NotificationCenter') {
+        navigation.navigate('NotificationCenter', { screen: 'NotificationList', params: undefined });
+      }
+      // For 'Main', deep-link to the specific detail screen — navigation.navigate('Main') is
+      // a fallback; individual screens handle params via their own route params.
+      // We navigate to NotificationCenter → NotificationDetails which then shows a "View" button
+      // for the resource — this is the safest cross-role-compatible deep link.
+      if (data.notificationType) {
+        // Navigate to the notification center so the user sees the notification detail
+        // (which itself has a "View <module>" button).
+        navigation.navigate('NotificationCenter', { screen: 'NotificationList', params: undefined });
+      }
+    },
+    [navigation],
+  );
+
   const requestPermissionsAndRegister = useCallback(async () => {
-    // Push notifications only work on physical devices
     if (!Device.isDevice) {
       console.info('[push] Skipping FCM registration — not a physical device');
       return;
@@ -62,7 +207,14 @@ export function usePushNotifications() {
     let finalStatus = existing;
 
     if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+          allowCriticalAlerts: true,
+        },
+      });
       finalStatus = status;
     }
 
@@ -71,23 +223,18 @@ export function usePushNotifications() {
       return;
     }
 
-    // Create Android notification channel
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('vms_default', {
-        name: 'VMS Notifications',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#2563EB',
-        enableVibrate: true,
-        showBadge: true,
-      });
-    }
+    // Create channels and action categories
+    await createNotificationChannels().catch(() => null);
+    await registerNotificationCategories().catch(() => null);
 
-    // Get the native FCM / APNs token
+    // Register background task for silent (data-only) pushes
+    await registerBackgroundNotificationTask().catch(() => null);
+
+    // Get native FCM token
     let token: string | undefined;
     try {
       const result = await Notifications.getDevicePushTokenAsync();
-      token = result.data;
+      token = result.data as string;
     } catch (err) {
       console.warn('[push] getDevicePushTokenAsync failed — FCM push will not work on this device:', err);
       return;
@@ -108,12 +255,11 @@ export function usePushNotifications() {
 
   const unregisterDevice = useCallback(async () => {
     if (!registeredTokenRef.current) return;
-    await removeDevice({ deviceId: deviceIdRef.current }).unwrap().catch(() => {
-      // Best-effort — if the server is unreachable the token expires naturally
-    });
+    await removeDevice({ deviceId: deviceIdRef.current }).unwrap().catch(() => null);
     registeredTokenRef.current = null;
   }, [removeDevice]);
 
+  // Register/unregister on auth state change
   useEffect(() => {
     if (isAuthenticated) {
       requestPermissionsAndRegister();
@@ -122,36 +268,50 @@ export function usePushNotifications() {
     }
   }, [isAuthenticated, requestPermissionsAndRegister, unregisterDevice]);
 
+  // Killed-app launch: check for the notification that opened the app
   useEffect(() => {
-    // Handle foreground notifications (show in-app banner via setNotificationHandler above)
+    if (!isAuthenticated) return;
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) handleNotificationResponse(response);
+    }).catch(() => null);
+  }, [isAuthenticated, handleNotificationResponse]);
+
+  // Foreground notification received
+  useEffect(() => {
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      console.info('[push] Foreground notification received:', notification.request.content.title);
+      console.info('[push] Foreground notification:', notification.request.content.title);
+      // Badge is managed by shouldSetBadge: true in the global handler
     });
 
-    // Handle tap on notification (background or killed-app launch)
+    // User tapped a notification or an action button
     responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.info('[push] Notification tapped:', response.notification.request.content.data);
-      // Deep-link handling is done in the individual notification detail screen
+      const actionId = response.actionIdentifier;
+      if (actionId === DEFAULT_ACTION_IDENTIFIER || actionId === 'open') {
+        handleNotificationResponse(response);
+      } else if (actionId === 'approve' || actionId === 'reject') {
+        // For approval action buttons: navigate to the detail screen
+        // where the user can confirm the action in-app
+        handleNotificationResponse(response);
+      }
     });
 
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, []);
+  }, [handleNotificationResponse]);
 
-  // Token refresh — FCM rotates tokens; register the new one
+  // Token refresh — FCM rotates tokens; re-register automatically
   useEffect(() => {
-    const sub = Notifications.addPushTokenListener((token) => {
-      if (isAuthenticated && token.data) {
-        registeredTokenRef.current = token.data;
-        registerDevice({
-          token:      token.data,
-          deviceId:   deviceIdRef.current,
-          platform:   getPlatform(),
-          deviceName: getDeviceName(),
-        }).catch((err) => console.error('[push] token refresh registration failed:', err));
-      }
+    const sub = Notifications.addPushTokenListener((pushToken) => {
+      if (!isAuthenticated || !pushToken.data) return;
+      registeredTokenRef.current = pushToken.data as string;
+      registerDevice({
+        token:      pushToken.data as string,
+        deviceId:   deviceIdRef.current,
+        platform:   getPlatform(),
+        deviceName: getDeviceName(),
+      }).catch((err) => console.error('[push] Token refresh registration failed:', err));
     });
     return () => sub.remove();
   }, [isAuthenticated, registerDevice]);

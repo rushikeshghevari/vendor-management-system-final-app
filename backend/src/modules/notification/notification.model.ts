@@ -58,6 +58,9 @@ export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
 export const NOTIFICATION_CATEGORIES = ['information', 'success', 'warning', 'error'] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
+export const PUSH_DELIVERY_STATUSES = ['pending', 'sent', 'failed'] as const;
+export type PushDeliveryStatus = (typeof PUSH_DELIVERY_STATUSES)[number];
+
 export interface INotification extends Document {
   title: string;
   message: string;
@@ -73,6 +76,10 @@ export interface INotification extends Document {
   isArchived: boolean;
   isDeleted: boolean;
   isPushSent: boolean;
+  pushDeliveryStatus: PushDeliveryStatus;
+  pushSentAt?: Date;
+  pushFailedAt?: Date;
+  pushRetryCount: number;
   clickedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -90,11 +97,15 @@ const notificationSchema = new Schema<INotification>(
     notificationType: { type: String, enum: NOTIFICATION_TYPES, required: true },
     priority:         { type: String, enum: NOTIFICATION_PRIORITIES, default: 'medium' },
     category:         { type: String, enum: NOTIFICATION_CATEGORIES, default: 'information' },
-    isRead:           { type: Boolean, default: false },
-    isArchived:       { type: Boolean, default: false },
-    isDeleted:        { type: Boolean, default: false },
-    isPushSent:       { type: Boolean, default: false },
-    clickedAt:        { type: Date },
+    isRead:              { type: Boolean, default: false },
+    isArchived:          { type: Boolean, default: false },
+    isDeleted:           { type: Boolean, default: false },
+    isPushSent:          { type: Boolean, default: false },
+    pushDeliveryStatus:  { type: String, enum: PUSH_DELIVERY_STATUSES, default: 'pending' },
+    pushSentAt:          { type: Date },
+    pushFailedAt:        { type: Date },
+    pushRetryCount:      { type: Number, default: 0 },
+    clickedAt:           { type: Date },
   },
   { timestamps: true },
 );

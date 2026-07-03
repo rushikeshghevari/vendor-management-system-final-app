@@ -2,6 +2,7 @@ import { createApp } from '@/app';
 import { connectDB, disconnectDB } from '@/config/db';
 import { env } from '@/config/env';
 import { startEscalationScheduler, stopEscalationScheduler } from '@/services/escalation/escalation.service';
+import { startQueueProcessor, stopQueueProcessor } from '@/services/push/notificationQueue.service';
 import { logger } from '@/utils/logger';
 
 async function main(): Promise<void> {
@@ -13,10 +14,12 @@ async function main(): Promise<void> {
   });
 
   startEscalationScheduler();
+  startQueueProcessor();
 
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     stopEscalationScheduler();
+    stopQueueProcessor();
     server.close(async () => {
       await disconnectDB();
       process.exit(0);

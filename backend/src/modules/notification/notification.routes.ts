@@ -29,8 +29,9 @@ router.post(
   notificationController.broadcast,
 );
 
-router.patch('/:id/read',    validate({ params: mongoIdParamSchema() }), notificationController.markRead);
-router.patch('/:id/archive', validate({ params: mongoIdParamSchema() }), notificationController.archive);
-router.delete('/:id',        validate({ params: mongoIdParamSchema() }), notificationController.softDelete);
+router.patch('/:id/read',      validate({ params: mongoIdParamSchema() }), notificationController.markRead);
+router.patch('/:id/archive',   validate({ params: mongoIdParamSchema() }), notificationController.archive);
+router.patch('/:id/delivered', validate({ params: mongoIdParamSchema() }), notificationController.recordDelivery);
+router.delete('/:id',          validate({ params: mongoIdParamSchema() }), notificationController.softDelete);
 
 export default router;

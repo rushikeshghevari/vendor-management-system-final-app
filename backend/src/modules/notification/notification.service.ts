@@ -11,6 +11,7 @@ import { sendPushToTokens } from '@/services/push/pushNotification.service';
 import type { Actor } from '@/types/actor';
 import { ApiError } from '@/utils/ApiError';
 import { buildPaginationMeta, parsePagination } from '@/utils/pagination';
+import type mongoose from 'mongoose';
 
 export interface NotificationPayload {
   title: string;
@@ -35,25 +36,37 @@ interface ReceiverWithTokens extends Receiver {
 async function dispatchPush(
   receivers: ReceiverWithTokens[],
   payload: NotificationPayload,
+  notificationIds?: mongoose.Types.ObjectId[],
 ): Promise<void> {
-  const tokens: Array<{ token: string; platform: string }> = [];
+  const tokens: Array<{ token: string; userId: string; platform: 'android' | 'ios' | 'web' }> = [];
   for (const r of receivers) {
     if (r.fcmTokens) {
       for (const t of r.fcmTokens) {
-        if (t.isActive && t.token) tokens.push({ token: t.token, platform: t.platform });
+        if (t.isActive && t.token) {
+          tokens.push({ token: t.token, userId: r.id, platform: t.platform as 'android' | 'ios' | 'web' });
+        }
       }
     }
   }
   if (tokens.length === 0) return;
 
-  await sendPushToTokens(tokens, {
-    title: payload.title,
-    body: payload.message,
-    module: payload.module,
-    referenceId: payload.relatedRecord,
-    priority: payload.priority ?? 'medium',
+  const result = await sendPushToTokens(tokens, {
+    title:            payload.title,
+    body:             payload.message,
+    module:           payload.module,
+    referenceId:      payload.relatedRecord,
+    priority:         payload.priority ?? 'medium',
     notificationType: payload.notificationType,
   });
+
+  // Update delivery status on the notification docs
+  if (notificationIds && notificationIds.length > 0) {
+    const now = new Date();
+    const update = result.successCount > 0
+      ? { isPushSent: true, pushDeliveryStatus: 'sent', pushSentAt: now }
+      : { pushDeliveryStatus: 'failed', pushFailedAt: now };
+    await Notification.updateMany({ _id: { $in: notificationIds } }, update).catch(() => null);
+  }
 }
 
 export const notificationService = {
@@ -61,7 +74,6 @@ export const notificationService = {
   async notifyUsers(receivers: Receiver[], payload: NotificationPayload): Promise<void> {
     if (receivers.length === 0) return;
 
-    // Fetch FCM tokens alongside the insert
     const userDocs = await User.find({ _id: { $in: receivers.map((r) => r.id) } })
       .select('_id role fcmTokens')
       .lean();
@@ -74,7 +86,7 @@ export const notificationService = {
       fcmTokens: tokenMap.get(r.id)?.fcmTokens ?? [],
     }));
 
-    await Notification.insertMany(
+    const inserted = await Notification.insertMany(
       receivers.map((receiver) => ({
         ...payload,
         receiver: receiver.id,
@@ -84,14 +96,16 @@ export const notificationService = {
       })),
     );
 
+    const ids = inserted.map((doc) => doc._id as mongoose.Types.ObjectId);
+
     // Fire-and-forget FCM push (never block the API response)
-    dispatchPush(receiversWithTokens, payload).catch((err) =>
+    dispatchPush(receiversWithTokens, payload, ids).catch((err) =>
       console.error('[push] dispatchPush error:', err),
     );
   },
 
   async notifyUser(receiver: Receiver, payload: NotificationPayload): Promise<void> {
-    await Notification.create({
+    const doc = await Notification.create({
       ...payload,
       receiver: receiver.id,
       receiverRole: receiver.role,
@@ -101,7 +115,8 @@ export const notificationService = {
 
     const userDoc = await User.findById(receiver.id).select('fcmTokens').lean();
     if (userDoc?.fcmTokens?.length) {
-      dispatchPush([{ ...receiver, fcmTokens: userDoc.fcmTokens }], payload).catch((err) =>
+      const id = doc._id as mongoose.Types.ObjectId;
+      dispatchPush([{ ...receiver, fcmTokens: userDoc.fcmTokens }], payload, [id]).catch((err) =>
         console.error('[push] dispatchPush error:', err),
       );
     }
@@ -238,6 +253,17 @@ export const notificationService = {
     );
 
     return { sent: users.length };
+  },
+
+  /** Mark push as delivered when the user taps the notification from the system tray. */
+  async recordDelivery(id: string, actor: Actor) {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, receiver: actor.id },
+      { isRead: true, clickedAt: new Date(), pushDeliveryStatus: 'sent', isPushSent: true },
+      { new: true },
+    );
+    if (!notification) throw ApiError.notFound('Notification not found');
+    return notification;
   },
 
   async getAnalytics(actor: Actor) {

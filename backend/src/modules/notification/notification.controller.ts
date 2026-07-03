@@ -49,4 +49,9 @@ export const notificationController = {
     const result = await notificationService.getAnalytics(req.user!);
     sendSuccess(res, result, 'Notification analytics fetched');
   }),
+
+  recordDelivery: catchAsync(async (req: Request, res: Response) => {
+    const notification = await notificationService.recordDelivery(req.params.id as string, req.user!);
+    sendSuccess(res, notification, 'Delivery recorded');
+  }),
 };
