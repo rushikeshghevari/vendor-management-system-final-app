@@ -6,7 +6,7 @@
 #   .\scripts\start-ngrok.ps1
 #
 # Prerequisite: ngrok installed and authenticated.
-#   Install : https://ngrok.com/download
+#   Install : https://ngrok.com/download  OR  npm install -g ngrok
 #   Auth    : ngrok config add-authtoken <your-token>
 
 Set-StrictMode -Version Latest
@@ -15,13 +15,46 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $envFile  = Join-Path $repoRoot 'mobile\.env'
 
+# --- resolve actual ngrok binary (handles npm shim wrappers) -----------------
+#
+# On Windows, "npm install -g ngrok" puts a ngrok.ps1 shim on PATH.
+# Start-Process cannot launch a .ps1 file directly as a process, so we must
+# resolve the real .exe from the shim's sibling node_modules directory.
+
+function Get-NgrokExe {
+    $cmd = Get-Command ngrok -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $null }
+
+    $src = $cmd.Source
+
+    # If the shim is a script wrapper, find the real binary next to it.
+    if ($src -match '\.(ps1|cmd)$') {
+        $shimDir = Split-Path $src
+        $candidates = @(
+            (Join-Path $shimDir 'node_modules\ngrok\bin\ngrok.exe'),
+            "$env:LOCALAPPDATA\ngrok\ngrok.exe",
+            "$env:ProgramFiles\ngrok\ngrok.exe",
+            "$env:ProgramFiles(x86)\ngrok\ngrok.exe"
+        )
+        foreach ($c in $candidates) {
+            if (Test-Path $c) { return $c }
+        }
+        return $null
+    }
+
+    # Already a real executable
+    return $src
+}
+
 # --- sanity checks -----------------------------------------------------------
 
-if (-not (Get-Command ngrok -ErrorAction SilentlyContinue)) {
+$ngrokExe = Get-NgrokExe
+if (-not $ngrokExe) {
     Write-Host ''
-    Write-Host '  ERROR: ngrok not found in PATH.' -ForegroundColor Red
-    Write-Host '  Install: https://ngrok.com/download' -ForegroundColor Yellow
-    Write-Host '  Auth   : ngrok config add-authtoken <your-token>' -ForegroundColor Yellow
+    Write-Host '  ERROR: ngrok executable not found.' -ForegroundColor Red
+    Write-Host '  Install via:  npm install -g ngrok' -ForegroundColor Yellow
+    Write-Host '           or:  https://ngrok.com/download' -ForegroundColor Yellow
+    Write-Host '  Then auth:    ngrok config add-authtoken <your-token>' -ForegroundColor Yellow
     Write-Host ''
     exit 1
 }
@@ -44,13 +77,15 @@ if ($existing) {
 
 Write-Host ''
 Write-Host '  Starting ngrok tunnel  :5000 -> HTTPS' -ForegroundColor Cyan
+Write-Host "  Binary: $ngrokExe" -ForegroundColor DarkGray
 
-$ngrokExe = (Get-Command ngrok).Source
 $proc = Start-Process -FilePath $ngrokExe `
     -ArgumentList 'http', '5000' `
     -WindowStyle Hidden -PassThru
 
 # --- wait for URL ------------------------------------------------------------
+# Use 127.0.0.1 explicitly — on Windows, "localhost" often resolves to ::1
+# (IPv6) first, but ngrok only binds its web API on 127.0.0.1 (IPv4).
 
 Write-Host '  Waiting for public URL' -NoNewline -ForegroundColor DarkGray
 $ngrokUrl = $null
@@ -59,14 +94,14 @@ for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep 1
     Write-Host '.' -NoNewline -ForegroundColor DarkGray
     try {
-        $resp   = Invoke-RestMethod 'http://localhost:4040/api/tunnels' -ErrorAction SilentlyContinue
+        $resp   = Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -ErrorAction SilentlyContinue
         $tunnel = $resp.tunnels | Where-Object { $_.proto -eq 'https' } | Select-Object -First 1
         if ($tunnel) {
             $ngrokUrl = $tunnel.public_url.TrimEnd('/')
             break
         }
     } catch {
-        # ngrok not ready yet — keep polling
+        # ngrok not ready yet - keep polling
     }
 }
 Write-Host ''
@@ -104,14 +139,11 @@ Write-Host '  Next - open a NEW terminal and run:' -ForegroundColor Cyan
 Write-Host '    cd mobile' -ForegroundColor White
 Write-Host '    npx expo run:android' -ForegroundColor White
 Write-Host ''
-Write-Host '  ngrok dashboard: http://localhost:4040' -ForegroundColor DarkGray
+Write-Host '  ngrok dashboard: http://127.0.0.1:4040' -ForegroundColor DarkGray
 Write-Host '  Press Ctrl+C to stop ngrok.' -ForegroundColor DarkGray
 Write-Host ''
 
 # --- keep running until Ctrl+C -----------------------------------------------
-# ngrok 3.x uses a persistent agent daemon — the CLI process ($proc) exits
-# immediately after handing off to the agent. Keep this script alive by polling
-# the agent API so the tunnel stays associated with this session.
 
 Write-Host '  Tunnel is active. Press Ctrl+C to stop.' -ForegroundColor DarkGray
 Write-Host ''
@@ -120,7 +152,7 @@ try {
     while ($true) {
         Start-Sleep 5
         try {
-            $check = Invoke-RestMethod 'http://localhost:4040/api/tunnels' -ErrorAction Stop
+            $check = Invoke-RestMethod 'http://127.0.0.1:4040/api/tunnels' -ErrorAction Stop
             $alive = $check.tunnels | Where-Object { $_.proto -eq 'https' }
             if (-not $alive) {
                 Write-Host '  Tunnel dropped. Re-run this script.' -ForegroundColor Yellow
@@ -132,9 +164,6 @@ try {
         }
     }
 } finally {
-    # Stop the agent on Ctrl+C by calling the ngrok API to stop all tunnels,
-    # then kill any remaining ngrok process.
-    try { Invoke-RestMethod 'http://localhost:4040/api/tunnels' -Method Get -ErrorAction SilentlyContinue | Out-Null } catch {}
     Get-Process -Name ngrok -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Write-Host '  ngrok stopped.' -ForegroundColor DarkGray
 }
