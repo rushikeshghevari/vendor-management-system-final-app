@@ -13,6 +13,7 @@ export type MainTabParamList = {
   Vendors: NavigatorScreenParams<VendorsStackParamList> | undefined;
   Quotations: NavigatorScreenParams<QuotationsStackParamList> | undefined;
   Bills: NavigatorScreenParams<BillsStackParamList> | undefined;
+  PurchaseOrders: NavigatorScreenParams<PurchaseOrderStackParamList> | undefined;
   Reports: undefined;
   Payments: NavigatorScreenParams<PaymentsStackParamList> | undefined;
   Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
@@ -26,6 +27,7 @@ export type DepartmentUserTabParamList = {
   Vendors: NavigatorScreenParams<VendorsStackParamList> | undefined;
   Quotations: NavigatorScreenParams<QuotationsStackParamList> | undefined;
   Bills: NavigatorScreenParams<BillsStackParamList> | undefined;
+  PurchaseOrders: NavigatorScreenParams<PurchaseOrderStackParamList> | undefined;
   // Read-only "My Payments" — scoped server-side to Payments tied to Bills this Department
   // User created. No process/edit actions ever render for this role.
   Payments: NavigatorScreenParams<PaymentsStackParamList> | undefined;
@@ -81,6 +83,13 @@ export type BillsStackParamList = {
   EditBill: { billId: string };
 };
 
+export type PurchaseOrderStackParamList = {
+  PurchaseOrderList: undefined;
+  PurchaseOrderDetails: { purchaseOrderId: string };
+  CreatePurchaseOrder: undefined;
+  ComparisonScreen: { purchaseOrderId: string };
+};
+
 /** Shared by Payment Department (full actions), Accounts/Super Admin (read-only), and
  *  Department User (read-only "My Payments") — action buttons are gated client-side by role,
  *  and re-enforced server-side regardless (see payment.routes.ts authorize() calls). Never
@@ -101,6 +110,7 @@ export type PaymentsStackParamList = {
 export type AccountsTabParamList = {
   Dashboard: undefined;
   Bills: NavigatorScreenParams<AccountsBillsStackParamList> | undefined;
+  PurchaseOrders: NavigatorScreenParams<PurchaseOrderStackParamList> | undefined;
   // Read-only — Accounts can search/filter/view but never process a payment.
   Payments: NavigatorScreenParams<PaymentsStackParamList> | undefined;
   Reports: undefined;

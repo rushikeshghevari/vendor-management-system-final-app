@@ -9,6 +9,7 @@ import { DirectorNavigator } from '@/navigation/DirectorNavigator';
 import { PaymentNavigator } from '@/navigation/PaymentNavigator';
 import { PaymentsNavigator } from '@/navigation/PaymentsNavigator';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
+import { PurchaseOrdersNavigator } from '@/navigation/PurchaseOrdersNavigator';
 import { QuotationsNavigator } from '@/navigation/QuotationsNavigator';
 import { SuperAdminNavigator } from '@/navigation/SuperAdminNavigator';
 import { VendorsNavigator } from '@/navigation/VendorsNavigator';
@@ -39,6 +40,7 @@ function DepartmentUserTabs() {
       <DepartmentUserTab.Screen name="Vendors" component={VendorsNavigator} />
       <DepartmentUserTab.Screen name="Quotations" component={QuotationsNavigator} />
       <DepartmentUserTab.Screen name="Bills" component={BillsNavigator} />
+      <DepartmentUserTab.Screen name="PurchaseOrders" component={PurchaseOrdersNavigator} options={{ title: 'Purchase Orders' }} />
       <DepartmentUserTab.Screen name="Payments" component={PaymentsNavigator} />
       <DepartmentUserTab.Screen name="Profile" component={ProfileNavigator} />
     </DepartmentUserTab.Navigator>
@@ -66,6 +68,7 @@ function AccountsTabs() {
     >
       <AccountsTab.Screen name="Dashboard" component={AccountsDashboardScreen} />
       <AccountsTab.Screen name="Bills" component={AccountsBillsNavigator} />
+      <AccountsTab.Screen name="PurchaseOrders" component={PurchaseOrdersNavigator} options={{ title: 'Purchase Orders' }} />
       <AccountsTab.Screen name="Payments" component={PaymentsNavigator} />
       <AccountsTab.Screen name="Reports" component={ReportsPlaceholder} />
       <AccountsTab.Screen name="Profile" component={ProfileNavigator} />

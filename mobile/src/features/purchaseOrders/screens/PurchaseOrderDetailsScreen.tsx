@@ -1,0 +1,255 @@
+import {
+  Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
+import { Screen } from '@/components/ui/Screen';
+import { AppHeader } from '@/components/layout/AppHeader';
+import { PurchaseOrderStatusBadge } from '@/features/purchaseOrders/components/PurchaseOrderStatusBadge';
+import {
+  useGetPurchaseOrderByIdQuery,
+  useTriggerAiVerificationMutation,
+} from '@/features/purchaseOrders/api/purchaseOrdersApi';
+import { AiVerificationCard } from '@/features/aiVerification/components/AiVerificationCard';
+import { useAuth } from '@/hooks/useAuth';
+import type { PurchaseOrderStackParamList } from '@/navigation/types';
+
+type Props = NativeStackScreenProps<PurchaseOrderStackParamList, 'PurchaseOrderDetails'>;
+
+const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace('/api/v1', '') ?? '';
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string | number }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
+}
+
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(n);
+}
+function formatDate(d: string) {
+  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+export function PurchaseOrderDetailsScreen({ route, navigation }: Props) {
+  const { purchaseOrderId } = route.params;
+  const { user } = useAuth();
+
+  const { data: po, isLoading, refetch } = useGetPurchaseOrderByIdQuery(purchaseOrderId);
+  const [triggerAi, { isLoading: isVerifying }] = useTriggerAiVerificationMutation();
+
+  const isAccountsOrAdmin = user?.role === 'accounts' || user?.role === 'super_admin';
+
+  const handleTriggerAi = () => {
+    if (!po) return;
+    Alert.alert(
+      'Run AI Verification',
+      'This will compare the Purchase Order with the linked Bill using AI. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Run AI',
+          onPress: async () => {
+            try {
+              await triggerAi(po.id).unwrap();
+              Alert.alert('Success', 'AI Verification complete. Results are now available.');
+            } catch (err: unknown) {
+              const msg = (err as { data?: { message?: string } })?.data?.message ?? 'AI Verification failed';
+              Alert.alert('Error', msg);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!po) return;
+    const url = `${API_BASE}/api/v1/purchase-orders/${po.id}/pdf`;
+    await Linking.openURL(url);
+  };
+
+  if (isLoading || !po) {
+    return (
+      <Screen padded={false}>
+        <AppHeader title="Purchase Order" leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen padded={false}>
+      <AppHeader title={po.poNumber} leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
+      <ScrollView contentContainerStyle={styles.scroll}>
+
+        {/* Header card */}
+        <View style={styles.headerCard}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.poNumber}>{po.poNumber}</Text>
+              <Text style={styles.poDate}>{formatDate(po.poDate)}</Text>
+            </View>
+            <PurchaseOrderStatusBadge status={po.status} />
+          </View>
+          <View style={styles.headerMeta}>
+            <Text style={styles.grandTotal}>{formatCurrency(po.grandTotal)}</Text>
+            <Text style={styles.headerSub}>Grand Total</Text>
+          </View>
+        </View>
+
+        {/* Action buttons */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleDownloadPdf}>
+            <Ionicons name="download-outline" size={18} color="#2563EB" />
+            <Text style={styles.actionBtnText}>Download PDF</Text>
+          </TouchableOpacity>
+          {isAccountsOrAdmin && po.billId && !po.aiVerification && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnAi]}
+              onPress={handleTriggerAi}
+              disabled={isVerifying}
+            >
+              {isVerifying
+                ? <ActivityIndicator size="small" color="#7C3AED" />
+                : <Ionicons name="sparkles-outline" size={18} color="#7C3AED" />}
+              <Text style={[styles.actionBtnText, { color: '#7C3AED' }]}>
+                {isVerifying ? 'Verifying...' : 'Run AI Verification'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {isAccountsOrAdmin && po.aiVerification && (
+            <TouchableOpacity
+              style={[styles.actionBtn, styles.actionBtnComparison]}
+              onPress={() => navigation.navigate('ComparisonScreen', { purchaseOrderId: po.id })}
+            >
+              <Ionicons name="git-compare-outline" size={18} color="#059669" />
+              <Text style={[styles.actionBtnText, { color: '#059669' }]}>Compare PO vs Bill</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* AI Verification Card */}
+        {po.aiVerification && (
+          <AiVerificationCard aiVerification={po.aiVerification} />
+        )}
+
+        {/* PO Details */}
+        <SectionCard title="Purchase Order Details">
+          <Row label="Quotation Ref" value={po.quotationCode} />
+          <Row label="Department" value={po.departmentName} />
+          <Row label="PO Date" value={formatDate(po.poDate)} />
+        </SectionCard>
+
+        {/* Vendor */}
+        <SectionCard title="Vendor Details">
+          <Row label="Name" value={po.vendorName} />
+          <Row label="GST" value={po.vendorGst} />
+          <Row label="Address" value={po.vendorAddress} />
+        </SectionCard>
+
+        {/* Line Items */}
+        <SectionCard title="Line Items">
+          {po.items.map((item, idx) => (
+            <View key={idx} style={styles.lineItem}>
+              <View style={styles.lineItemHeader}>
+                <Text style={styles.lineItemName}>{item.itemName}</Text>
+                <Text style={styles.lineItemTotal}>{formatCurrency(item.total)}</Text>
+              </View>
+              {item.description ? <Text style={styles.lineItemDesc}>{item.description}</Text> : null}
+              <View style={styles.lineItemMeta}>
+                <Text style={styles.lineItemMetaText}>Qty: {item.quantity}</Text>
+                <Text style={styles.lineItemMetaText}>× {formatCurrency(item.unitPrice)}</Text>
+                <Text style={styles.lineItemMetaText}>GST: {item.gstRate}%</Text>
+                {item.discount > 0 && <Text style={styles.lineItemMetaText}>Disc: -{formatCurrency(item.discount)}</Text>}
+              </View>
+            </View>
+          ))}
+        </SectionCard>
+
+        {/* Totals */}
+        <SectionCard title="Summary">
+          <Row label="Subtotal" value={formatCurrency(po.subtotal)} />
+          <Row label="Total GST" value={formatCurrency(po.totalGst)} />
+          {po.totalTax > 0 && <Row label="Total Tax" value={formatCurrency(po.totalTax)} />}
+          {po.totalDiscount > 0 && <Row label="Total Discount" value={`-${formatCurrency(po.totalDiscount)}`} />}
+          <View style={styles.grandTotalRow}>
+            <Text style={styles.grandTotalLabel}>Grand Total</Text>
+            <Text style={styles.grandTotalValue}>{formatCurrency(po.grandTotal)}</Text>
+          </View>
+        </SectionCard>
+
+        {/* Linked Bill */}
+        {po.billCode && (
+          <SectionCard title="Linked Bill">
+            <Row label="Bill Code" value={po.billCode} />
+            {po.billStatus && <Row label="Bill Status" value={po.billStatus.toUpperCase().replace(/_/g, ' ')} />}
+            {po.billInvoiceAmount !== undefined && (
+              <Row label="Invoice Amount" value={formatCurrency(po.billInvoiceAmount)} />
+            )}
+          </SectionCard>
+        )}
+
+        {po.terms && (
+          <SectionCard title="Terms & Conditions">
+            <Text style={styles.termsText}>{po.terms}</Text>
+          </SectionCard>
+        )}
+        {po.notes && (
+          <SectionCard title="Notes">
+            <Text style={styles.termsText}>{po.notes}</Text>
+          </SectionCard>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen:            { flex: 1, backgroundColor: '#F9FAFB' },
+  scroll:            { padding: 16, paddingBottom: 40 },
+  centered:          { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerCard:        { backgroundColor: '#1D4ED8', borderRadius: 14, padding: 20, marginBottom: 12 },
+  headerTop:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  poNumber:          { fontSize: 18, fontWeight: '800', color: '#fff' },
+  poDate:            { fontSize: 12, color: '#BFDBFE', marginTop: 2 },
+  headerMeta:        {},
+  grandTotal:        { fontSize: 28, fontWeight: '800', color: '#fff' },
+  headerSub:         { fontSize: 12, color: '#BFDBFE', marginTop: 2 },
+  actionsRow:        { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  actionBtn:         { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EFF6FF', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#BFDBFE' },
+  actionBtnAi:       { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF' },
+  actionBtnComparison: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  actionBtnText:     { fontSize: 13, fontWeight: '600', color: '#2563EB' },
+  card:              { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  cardTitle:         { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 12 },
+  row:               { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  rowLabel:          { fontSize: 13, color: '#6B7280', flex: 1 },
+  rowValue:          { fontSize: 13, color: '#111827', fontWeight: '500', flex: 1.5, textAlign: 'right' },
+  lineItem:          { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  lineItemHeader:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  lineItemName:      { fontSize: 14, fontWeight: '600', color: '#111827', flex: 1 },
+  lineItemTotal:     { fontSize: 14, fontWeight: '700', color: '#111827' },
+  lineItemDesc:      { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+  lineItemMeta:      { flexDirection: 'row', gap: 10, marginTop: 4, flexWrap: 'wrap' },
+  lineItemMetaText:  { fontSize: 12, color: '#6B7280' },
+  grandTotalRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, marginTop: 4 },
+  grandTotalLabel:   { fontSize: 15, fontWeight: '700', color: '#111827' },
+  grandTotalValue:   { fontSize: 15, fontWeight: '800', color: '#1D4ED8' },
+  termsText:         { fontSize: 13, color: '#374151', lineHeight: 20 },
+});

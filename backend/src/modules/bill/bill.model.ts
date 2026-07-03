@@ -39,6 +39,7 @@ export interface IBillApproval {
 export interface IBill extends Document {
   billCode: string;
   quotation: Types.ObjectId;
+  purchaseOrder?: Types.ObjectId;
   vendor: Types.ObjectId;
   department: Types.ObjectId;
   createdBy: Types.ObjectId;
@@ -110,6 +111,8 @@ const billSchema = new Schema<IBill>(
     // One Approved Quotation -> one Bill, enforced by uniqueness plus the quotation's own
     // approved -> billed transition (see quotationService.transitionStatus in bill.service.ts).
     quotation: { type: Schema.Types.ObjectId, ref: 'Quotation', required: true, unique: true },
+    // Set when the Department User links this bill to an existing Purchase Order.
+    purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder' },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },

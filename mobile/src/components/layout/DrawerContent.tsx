@@ -36,22 +36,24 @@ type NavEntry = TabNavItem | ActionNavItem;
 // ─── Per-role primary navigation ────────────────────────────────────────────
 
 const NAV_SUPER_ADMIN: TabNavItem[] = [
-  { kind: 'tab', label: 'Dashboard',   icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'   },
-  { kind: 'tab', label: 'Departments', icon: 'business-outline',      activeIcon: 'business',      tab: 'Departments' },
-  { kind: 'tab', label: 'Users',       icon: 'people-outline',        activeIcon: 'people',        tab: 'Users'       },
-  { kind: 'tab', label: 'Vendors',     icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'     },
-  { kind: 'tab', label: 'Quotations',  icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations'  },
-  { kind: 'tab', label: 'Bills',       icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'       },
-  { kind: 'tab', label: 'Payments',    icon: 'card-outline',          activeIcon: 'card',          tab: 'Payments'    },
-  { kind: 'tab', label: 'Reports',     icon: 'bar-chart-outline',     activeIcon: 'bar-chart',     tab: 'Reports'     },
+  { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',             tab: 'Dashboard'      },
+  { kind: 'tab', label: 'Departments',     icon: 'business-outline',      activeIcon: 'business',         tab: 'Departments'    },
+  { kind: 'tab', label: 'Users',           icon: 'people-outline',        activeIcon: 'people',           tab: 'Users'          },
+  { kind: 'tab', label: 'Vendors',         icon: 'storefront-outline',    activeIcon: 'storefront',       tab: 'Vendors'        },
+  { kind: 'tab', label: 'Quotations',      icon: 'document-text-outline', activeIcon: 'document-text',    tab: 'Quotations'     },
+  { kind: 'tab', label: 'Bills',           icon: 'receipt-outline',       activeIcon: 'receipt',          tab: 'Bills'          },
+  { kind: 'tab', label: 'Purchase Orders', icon: 'clipboard-outline',     activeIcon: 'clipboard',        tab: 'PurchaseOrders' },
+  { kind: 'tab', label: 'Payments',        icon: 'card-outline',          activeIcon: 'card',             tab: 'Payments'       },
+  { kind: 'tab', label: 'Reports',         icon: 'bar-chart-outline',     activeIcon: 'bar-chart',        tab: 'Reports'        },
 ];
 
 const NAV_DEPARTMENT_USER: TabNavItem[] = [
-  { kind: 'tab', label: 'Dashboard',  icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'  },
-  { kind: 'tab', label: 'Vendors',    icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'    },
-  { kind: 'tab', label: 'Quotations', icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations' },
-  { kind: 'tab', label: 'Bills',      icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'      },
-  { kind: 'tab', label: 'Payments',   icon: 'card-outline',          activeIcon: 'card',          tab: 'Payments'   },
+  { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'      },
+  { kind: 'tab', label: 'Vendors',         icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'        },
+  { kind: 'tab', label: 'Quotations',      icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations'     },
+  { kind: 'tab', label: 'Bills',           icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'          },
+  { kind: 'tab', label: 'Purchase Orders', icon: 'clipboard-outline',     activeIcon: 'clipboard',     tab: 'PurchaseOrders' },
+  { kind: 'tab', label: 'Payments',        icon: 'card-outline',          activeIcon: 'card',          tab: 'Payments'       },
 ];
 
 const NAV_CEO: TabNavItem[] = [
@@ -69,10 +71,11 @@ const NAV_DIRECTOR: TabNavItem[] = [
 ];
 
 const NAV_ACCOUNTS: TabNavItem[] = [
-  { kind: 'tab', label: 'Dashboard', icon: 'home-outline',      activeIcon: 'home',    tab: 'Dashboard' },
-  { kind: 'tab', label: 'Bills',     icon: 'receipt-outline',   activeIcon: 'receipt', tab: 'Bills'     },
-  { kind: 'tab', label: 'Payments',  icon: 'card-outline',      activeIcon: 'card',    tab: 'Payments'  },
-  { kind: 'tab', label: 'Reports',   icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports' },
+  { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',      activeIcon: 'home',      tab: 'Dashboard'      },
+  { kind: 'tab', label: 'Bills',           icon: 'receipt-outline',   activeIcon: 'receipt',   tab: 'Bills'          },
+  { kind: 'tab', label: 'Purchase Orders', icon: 'clipboard-outline', activeIcon: 'clipboard', tab: 'PurchaseOrders' },
+  { kind: 'tab', label: 'Payments',        icon: 'card-outline',      activeIcon: 'card',      tab: 'Payments'       },
+  { kind: 'tab', label: 'Reports',         icon: 'bar-chart-outline', activeIcon: 'bar-chart', tab: 'Reports'        },
 ];
 
 const NAV_PAYMENT: TabNavItem[] = [

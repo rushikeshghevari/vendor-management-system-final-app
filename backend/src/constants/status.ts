@@ -1,3 +1,29 @@
+export const PO_STATUS = {
+  GENERATED: 'generated',
+  BILL_UPLOADED: 'bill_uploaded',
+  AI_VERIFICATION_PENDING: 'ai_verification_pending',
+  AI_VERIFIED: 'ai_verified',
+  ACCOUNTS_VERIFIED: 'accounts_verified',
+  PAYMENT_PENDING: 'payment_pending',
+  PAID: 'paid',
+  CLOSED: 'closed',
+} as const;
+export type PurchaseOrderStatus = (typeof PO_STATUS)[keyof typeof PO_STATUS];
+
+export const AI_RISK = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+} as const;
+export type AiRisk = (typeof AI_RISK)[keyof typeof AI_RISK];
+
+export const AI_RECOMMENDATION = {
+  APPROVE: 'APPROVE',
+  MANUAL_REVIEW: 'MANUAL_REVIEW',
+  REJECT: 'REJECT',
+} as const;
+export type AiRecommendation = (typeof AI_RECOMMENDATION)[keyof typeof AI_RECOMMENDATION];
+
 export const QUOTATION_STATUS = {
   DRAFT: 'draft',
   SUBMITTED: 'submitted',

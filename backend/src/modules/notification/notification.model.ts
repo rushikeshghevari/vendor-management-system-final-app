@@ -3,7 +3,7 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 import type { Role } from '@/constants/roles';
 import { ROLES } from '@/constants/roles';
 
-export const NOTIFICATION_MODULES = ['quotation', 'bill', 'payment'] as const;
+export const NOTIFICATION_MODULES = ['quotation', 'bill', 'payment', 'purchase_order'] as const;
 export type NotificationModule = (typeof NOTIFICATION_MODULES)[number];
 
 export const NOTIFICATION_TYPES = [
@@ -28,6 +28,10 @@ export const NOTIFICATION_TYPES = [
   'payment_paid',
   'payment_completed',
   'payment_failed',
+  'po_generated',
+  'po_bill_uploaded',
+  'po_ai_verified',
+  'po_accounts_verified',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 

@@ -6,6 +6,7 @@ import { DrawerProvider } from '@/navigation/context/DrawerContext';
 import { DrawerShell } from '@/navigation/DrawerShell';
 import { PaymentsNavigator } from '@/navigation/PaymentsNavigator';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
+import { PurchaseOrdersNavigator } from '@/navigation/PurchaseOrdersNavigator';
 import { QuotationsNavigator } from '@/navigation/QuotationsNavigator';
 import { UsersNavigator } from '@/navigation/UsersNavigator';
 import { VendorsNavigator } from '@/navigation/VendorsNavigator';
@@ -30,6 +31,7 @@ function SuperAdminTabs() {
       <Tab.Screen name="Vendors" component={VendorsNavigator} />
       <Tab.Screen name="Quotations" component={QuotationsNavigator} />
       <Tab.Screen name="Bills" component={BillsNavigator} />
+      <Tab.Screen name="PurchaseOrders" component={PurchaseOrdersNavigator} options={{ title: 'Purchase Orders' }} />
       <Tab.Screen name="Reports" component={ReportsScreen} />
       <Tab.Screen name="Payments" component={PaymentsNavigator} />
       <Tab.Screen name="Profile" component={ProfileNavigator} />

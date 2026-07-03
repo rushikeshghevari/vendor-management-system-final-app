@@ -31,6 +31,8 @@ export const env = {
     email: process.env.SEED_SUPER_ADMIN_EMAIL ?? 'superadmin@gmail.com',
     password: process.env.SEED_SUPER_ADMIN_PASSWORD ?? '1',
   },
+  // Optional — if not set, AI verification falls back to Rule Engine only.
+  geminiApiKey: process.env.GEMINI_API_KEY,
 } as const;
 
 export const isProduction = env.nodeEnv === 'production';

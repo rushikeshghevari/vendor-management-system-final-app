@@ -1,0 +1,152 @@
+import { Schema, model, type Document, type Types } from 'mongoose';
+
+import { PO_STATUS, AI_RISK, AI_RECOMMENDATION, type PurchaseOrderStatus, type AiRisk, type AiRecommendation } from '@/constants/status';
+
+// ─── Sub-document: PO Line Item ───────────────────────────────────────────────
+export interface IPurchaseOrderItem {
+  itemName: string;
+  description?: string;
+  quantity: number;
+  unitPrice: number;
+  gstRate: number;
+  gstAmount: number;
+  taxAmount: number;
+  discount: number;
+  total: number;
+}
+
+// ─── Sub-document: AI Difference Entry ────────────────────────────────────────
+export interface IAiDifference {
+  field: string;
+  purchaseOrder: unknown;
+  bill: unknown;
+  difference: string;
+}
+
+// ─── Sub-document: AI Verification Result ─────────────────────────────────────
+export interface IAiVerification {
+  matchPercentage: number;
+  risk: AiRisk;
+  recommendation: AiRecommendation;
+  confidence: number;
+  summary: string;
+  differences: IAiDifference[];
+  ruleEngineScore: number;
+  verifiedAt: Date;
+  ocrExtractedData?: Record<string, unknown>;
+}
+
+// ─── Main Document Interface ───────────────────────────────────────────────────
+export interface IPurchaseOrder extends Document {
+  poNumber: string;
+  poDate: Date;
+  quotation: Types.ObjectId;
+  quotationCode: string;
+  vendor: Types.ObjectId;
+  vendorName: string;
+  vendorGst: string;
+  vendorAddress: string;
+  department: Types.ObjectId;
+  departmentName: string;
+  createdBy: Types.ObjectId;
+  items: IPurchaseOrderItem[];
+  subtotal: number;
+  totalGst: number;
+  totalTax: number;
+  totalDiscount: number;
+  grandTotal: number;
+  terms?: string;
+  notes?: string;
+  status: PurchaseOrderStatus;
+  bill?: Types.ObjectId;
+  aiVerification?: IAiVerification;
+  isDeleted: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ─── Sub-schemas ───────────────────────────────────────────────────────────────
+const poItemSchema = new Schema<IPurchaseOrderItem>(
+  {
+    itemName:    { type: String, required: true, trim: true },
+    description: { type: String, trim: true },
+    quantity:    { type: Number, required: true, min: 0 },
+    unitPrice:   { type: Number, required: true, min: 0 },
+    gstRate:     { type: Number, required: true, min: 0, max: 100 },
+    gstAmount:   { type: Number, required: true, min: 0 },
+    taxAmount:   { type: Number, required: true, min: 0 },
+    discount:    { type: Number, required: true, min: 0 },
+    total:       { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
+const aiDifferenceSchema = new Schema<IAiDifference>(
+  {
+    field:         { type: String, required: true },
+    purchaseOrder: { type: Schema.Types.Mixed },
+    bill:          { type: Schema.Types.Mixed },
+    difference:    { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const aiVerificationSchema = new Schema<IAiVerification>(
+  {
+    matchPercentage:   { type: Number, required: true, min: 0, max: 100 },
+    risk:              { type: String, enum: Object.values(AI_RISK), required: true },
+    recommendation:    { type: String, enum: Object.values(AI_RECOMMENDATION), required: true },
+    confidence:        { type: Number, required: true, min: 0, max: 100 },
+    summary:           { type: String, required: true },
+    differences:       { type: [aiDifferenceSchema], default: [] },
+    ruleEngineScore:   { type: Number, required: true, min: 0, max: 100 },
+    verifiedAt:        { type: Date, required: true },
+    ocrExtractedData:  { type: Schema.Types.Mixed },
+  },
+  { _id: false },
+);
+
+// ─── Main Schema ───────────────────────────────────────────────────────────────
+const purchaseOrderSchema = new Schema<IPurchaseOrder>(
+  {
+    poNumber: {
+      type: String, required: true, unique: true, uppercase: true, trim: true,
+    },
+    poDate: { type: Date, required: true, default: Date.now },
+    // One Approved Quotation → one PO (same uniqueness constraint as Bill→Quotation).
+    quotation: { type: Schema.Types.ObjectId, ref: 'Quotation', required: true, unique: true },
+    quotationCode: { type: String, required: true, trim: true, uppercase: true },
+    vendor:        { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
+    vendorName:    { type: String, required: true, trim: true },
+    vendorGst:     { type: String, required: true, trim: true },
+    vendorAddress: { type: String, required: true, trim: true },
+    department:     { type: Schema.Types.ObjectId, ref: 'Department', required: true },
+    departmentName: { type: String, required: true, trim: true },
+    createdBy:      { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    items:          { type: [poItemSchema], required: true },
+    subtotal:       { type: Number, required: true, min: 0 },
+    totalGst:       { type: Number, required: true, min: 0 },
+    totalTax:       { type: Number, required: true, min: 0 },
+    totalDiscount:  { type: Number, required: true, min: 0 },
+    grandTotal:     { type: Number, required: true, min: 0 },
+    terms:  { type: String, trim: true },
+    notes:  { type: String, trim: true },
+    status: {
+      type: String,
+      enum: Object.values(PO_STATUS),
+      default: PO_STATUS.GENERATED,
+    },
+    bill:           { type: Schema.Types.ObjectId, ref: 'Bill' },
+    aiVerification: { type: aiVerificationSchema },
+    isDeleted:      { type: Boolean, default: false },
+  },
+  { timestamps: true },
+);
+
+purchaseOrderSchema.index({ quotation: 1 });
+purchaseOrderSchema.index({ department: 1, status: 1 });
+purchaseOrderSchema.index({ createdBy: 1, status: 1 });
+purchaseOrderSchema.index({ vendor: 1 });
+purchaseOrderSchema.index({ status: 1, createdAt: -1 });
+
+export const PurchaseOrder = model<IPurchaseOrder>('PurchaseOrder', purchaseOrderSchema);
