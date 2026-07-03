@@ -24,4 +24,29 @@ export const notificationController = {
     await notificationService.markAllRead(req.user!);
     sendSuccess(res, null, 'All notifications marked as read');
   }),
+
+  archive: catchAsync(async (req: Request, res: Response) => {
+    const notification = await notificationService.archive(req.params.id as string, req.user!);
+    sendSuccess(res, notification, 'Notification archived');
+  }),
+
+  softDelete: catchAsync(async (req: Request, res: Response) => {
+    await notificationService.softDelete(req.params.id as string, req.user!);
+    sendSuccess(res, null, 'Notification deleted');
+  }),
+
+  deleteAll: catchAsync(async (req: Request, res: Response) => {
+    await notificationService.deleteAll(req.user!);
+    sendSuccess(res, null, 'All notifications deleted');
+  }),
+
+  broadcast: catchAsync(async (req: Request, res: Response) => {
+    const result = await notificationService.broadcast(req.body, req.user!);
+    sendSuccess(res, result, 'Broadcast sent', 201);
+  }),
+
+  analytics: catchAsync(async (req: Request, res: Response) => {
+    const result = await notificationService.getAnalytics(req.user!);
+    sendSuccess(res, result, 'Notification analytics fetched');
+  }),
 };

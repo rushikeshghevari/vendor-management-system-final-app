@@ -154,6 +154,12 @@ export type PaymentTabParamList = {
   Profile: undefined;
 };
 
+export type NotificationsStackParamList = {
+  NotificationList:    undefined;
+  NotificationDetails: { notificationId: string };
+  NotificationSettings: undefined;
+};
+
 export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
@@ -161,7 +167,7 @@ export type RootStackParamList = {
   // it's never persisted as a tab's "current screen". Reachable from anywhere via the bell
   // icon; Back always pops straight back to whatever tab/screen was visible underneath,
   // and selecting the Profile tab is therefore never affected by this screen having been open.
-  NotificationCenter: undefined;
+  NotificationCenter: NavigatorScreenParams<NotificationsStackParamList> | undefined;
 };
 
 declare global {

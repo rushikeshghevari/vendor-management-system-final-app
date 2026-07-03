@@ -5,9 +5,10 @@ import { useEffect, useState } from 'react';
 import { SplashScreen } from '@/bootstrap/SplashScreen';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthBootstrap } from '@/hooks/useAuthBootstrap';
+import { usePushNotifications } from '@/features/notifications/hooks/usePushNotifications';
 import { AuthNavigator } from '@/navigation/AuthNavigator';
 import { MainNavigator } from '@/navigation/MainNavigator';
-import { NotificationCenterScreen } from '@/navigation/screens/NotificationCenterScreen';
+import { NotificationsNavigator } from '@/navigation/NotificationsNavigator';
 import type { RootStackParamList } from '@/navigation/types';
 
 /** Minimum time the splash stays on screen, regardless of how fast auth bootstrap finishes. */
@@ -26,10 +27,12 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  * whatever was visible underneath, and the Profile tab's own stack is never touched.
  */
 function AuthenticatedNavigator() {
+  usePushNotifications();
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainNavigator} />
-      <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
+      <Stack.Screen name="NotificationCenter" component={NotificationsNavigator} />
     </Stack.Navigator>
   );
 }

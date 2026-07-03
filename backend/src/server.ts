@@ -1,6 +1,7 @@
 import { createApp } from '@/app';
 import { connectDB, disconnectDB } from '@/config/db';
 import { env } from '@/config/env';
+import { startEscalationScheduler, stopEscalationScheduler } from '@/services/escalation/escalation.service';
 import { logger } from '@/utils/logger';
 
 async function main(): Promise<void> {
@@ -11,8 +12,11 @@ async function main(): Promise<void> {
     logger.info(`Server listening on 0.0.0.0:${env.port} [${env.nodeEnv}]`);
   });
 
+  startEscalationScheduler();
+
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
+    stopEscalationScheduler();
     server.close(async () => {
       await disconnectDB();
       process.exit(0);

@@ -4,6 +4,16 @@ import { Schema, model, type Document, type Types } from 'mongoose';
 import { env, isProduction } from '@/config/env';
 import { ALL_ROLES, type Role } from '@/constants/roles';
 
+export interface IFcmToken {
+  token: string;
+  deviceId: string;
+  platform: 'android' | 'ios' | 'web';
+  deviceName?: string;
+  createdAt: Date;
+  lastUsed: Date;
+  isActive: boolean;
+}
+
 export interface IUser extends Document {
   id: string;
   name: string;
@@ -14,10 +24,23 @@ export interface IUser extends Document {
   phone?: string;
   isActive: boolean;
   lastLoginAt?: Date;
+  fcmTokens: IFcmToken[];
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidate: string): Promise<boolean>;
 }
+
+const fcmTokenSchema = new Schema<IFcmToken>(
+  {
+    token:      { type: String, required: true },
+    deviceId:   { type: String, required: true },
+    platform:   { type: String, enum: ['android', 'ios', 'web'], required: true },
+    deviceName: { type: String },
+    lastUsed:   { type: Date, default: Date.now },
+    isActive:   { type: Boolean, default: true },
+  },
+  { _id: false, timestamps: { createdAt: true, updatedAt: false } },
+);
 
 const userSchema = new Schema<IUser>(
   {
@@ -31,6 +54,7 @@ const userSchema = new Schema<IUser>(
     phone: { type: String, trim: true, unique: true, sparse: true },
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    fcmTokens: { type: [fcmTokenSchema], default: [] },
   },
   { timestamps: true },
 );

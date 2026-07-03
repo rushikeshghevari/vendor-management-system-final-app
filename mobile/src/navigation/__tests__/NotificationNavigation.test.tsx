@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { ROLES } from '@/constants/roles';
 import { sessionRestored } from '@/features/auth/authSlice';
 import { MainNavigator } from '@/navigation/MainNavigator';
-import { NotificationCenterScreen } from '@/navigation/screens/NotificationCenterScreen';
+import { NotificationsNavigator } from '@/navigation/NotificationsNavigator';
 import type { RootStackParamList } from '@/navigation/types';
 import { createStore } from '@/store';
 import { renderWithProviders } from '@/test/renderWithProviders';
@@ -18,7 +18,7 @@ function TestRoot() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainNavigator} />
-      <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
+      <Stack.Screen name="NotificationCenter" component={NotificationsNavigator} />
     </Stack.Navigator>
   );
 }
@@ -43,7 +43,7 @@ describe('Notification Center navigation', () => {
     // Dashboard is showing, with the bell visible (welcome name rendered in its own Text node).
     expect(screen.getByText('Test User 👋')).toBeTruthy();
 
-    // Tap the bell -> NotificationCenter opens (its "Mark all read" action is unique to it).
+    // Tap the bell -> NotificationCenter (NotificationsNavigator) opens.
     fireEvent.press(screen.getByLabelText('Notifications'));
     await waitFor(() => expect(screen.getByText('Mark all read')).toBeTruthy());
 

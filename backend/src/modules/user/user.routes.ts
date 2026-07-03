@@ -8,6 +8,8 @@ import { userController } from '@/modules/user/user.controller';
 import {
   changePasswordSchema,
   createUserSchema,
+  registerDeviceSchema,
+  removeDeviceSchema,
   resetPasswordSchema,
   updateUserSchema,
   updateUserStatusSchema,
@@ -20,6 +22,11 @@ const router = Router();
 router.use(authenticate);
 
 router.patch('/me/password', validate({ body: changePasswordSchema }), userController.changePassword);
+
+// Device token management — any authenticated user can register/remove their own devices
+router.post('/me/register-device', validate({ body: registerDeviceSchema }), userController.registerDevice);
+router.post('/me/remove-device',   validate({ body: removeDeviceSchema }),   userController.removeDevice);
+router.get('/me/devices',                                                     userController.myDevices);
 
 router.post(
   '/',

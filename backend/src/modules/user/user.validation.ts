@@ -54,8 +54,21 @@ export const userListQuerySchema = z.object({
   isActive: z.enum(['true', 'false']).optional(),
 });
 
+export const registerDeviceSchema = z.object({
+  token:      z.string().min(1).max(500),
+  deviceId:   z.string().min(1).max(200),
+  platform:   z.enum(['android', 'ios', 'web']),
+  deviceName: z.string().max(100).optional(),
+});
+
+export const removeDeviceSchema = z.object({
+  deviceId: z.string().min(1).max(200),
+});
+
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type RegisterDeviceInput = z.infer<typeof registerDeviceSchema>;
+export type RemoveDeviceInput = z.infer<typeof removeDeviceSchema>;
