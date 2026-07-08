@@ -33,10 +33,20 @@ export interface AiDifference {
   purchaseOrder: unknown;
   bill: unknown;
   difference: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface AiTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }
 
 export interface AiVerification {
   matchPercentage: number;
+  // 3-way match scores (Gemini compares Quotation + PO + Bill simultaneously)
+  quotationMatch?: number;
+  purchaseOrderMatch?: number;
   risk: AiRisk;
   recommendation: AiRecommendation;
   confidence: number;
@@ -44,6 +54,12 @@ export interface AiVerification {
   differences: AiDifference[];
   ruleEngineScore: number;
   verifiedAt: string;
+  // v2 metadata fields (present when Gemini ran — absent for legacy/rule-engine-only records)
+  executionTimeMs?: number;
+  promptVersion?: string;
+  modelVersion?: string;
+  tokenUsage?: AiTokenUsage;
+  aiProvider?: 'gemini' | 'rule_engine_only';
 }
 
 export interface PurchaseOrder {
@@ -119,9 +135,16 @@ export interface AuditLog {
   aiRecommendation: AiRecommendation;
   aiConfidence: number;
   matchPercentage: number;
+  quotationMatch?: number;
+  purchaseOrderMatch?: number;
   risk: AiRisk;
   differenceCount: number;
   differences: AiDifference[];
+  // Director Financial Approval snapshot
+  directorFinancialDecision?: string;
+  directorFinancialBy?: string;
+  directorFinancialRemarks?: string;
+  directorFinancialAt?: string;
   accountsDecision: 'verified' | 'correction_requested' | 'rejected';
   reason?: string;
   decidedById: string;

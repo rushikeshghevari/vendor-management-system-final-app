@@ -1,4 +1,6 @@
 import { baseApi } from '@/store/baseApi';
+import { apiClient } from '@/services/apiClient';
+import { normalizeApiError } from '@/services/apiError';
 import type {
   AuditLog,
   CreatePurchaseOrderRequest,
@@ -107,8 +109,20 @@ const purchaseOrdersApi = baseApi.injectEndpoints({
     }),
 
     getPurchaseOrderByQuotation: build.query<PurchaseOrder | null, string>({
-      query: (quotationId) => ({ url: `/purchase-orders/by-quotation/${quotationId}` }),
-      transformResponse: (raw: RawPo | null) => (raw ? normalizePo(raw) : null),
+      // 404 means no PO has been created for this quotation yet — expected state.
+      // queryFn intercepts the 404 before axiosBaseQuery logs it as an error.
+      queryFn: async (quotationId) => {
+        try {
+          const res = await apiClient.request<{ success: boolean; message: string; data: RawPo }>({
+            url: `/purchase-orders/by-quotation/${quotationId}`,
+          });
+          return { data: normalizePo(res.data.data) };
+        } catch (err) {
+          const normalized = normalizeApiError(err);
+          if (normalized.status === 404) return { data: null };
+          return { error: normalized };
+        }
+      },
       providesTags: (_r, _e, quotationId) => [{ type: 'PurchaseOrder' as never, id: `QTN-${quotationId}` }],
     }),
 
@@ -207,7 +221,7 @@ const purchaseOrdersApi = baseApi.injectEndpoints({
       providesTags: (_r, _e, id) => [{ type: 'AuditLog' as never, id: `PO-${id}` }],
     }),
   }),
-  overrideExisting: false,
+  overrideExisting: process.env.NODE_ENV !== 'production',
 });
 
 export const {

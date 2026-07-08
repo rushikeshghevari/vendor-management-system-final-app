@@ -82,7 +82,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
 
   const handleRefresh = () => { refetchStats(); refetchBills(); };
 
-  const goToBills = (initialStatus?: 'approved' | 'correction_requested' | 'verified' | 'rejected') =>
+  const goToBills = (initialStatus?: 'director_approved' | 'correction_requested' | 'verified' | 'rejected') =>
     navigation.navigate('Bills', { screen: 'AccountsBillList', params: { initialStatus } });
 
   const goToNotifications = () => {
@@ -104,7 +104,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
   );
 
   const kpiRow1 = useMemo<KpiCardData[]>(() => [
-    { id: 'pending', icon: 'hourglass', iconColor: '#f59e0b', iconBg: '#fef3c7', value: dash(stats?.pendingVerification), label: 'Pending Verification', subtitle: 'Bills to review', onPress: () => goToBills('approved') },
+    { id: 'pending', icon: 'hourglass', iconColor: '#f59e0b', iconBg: '#fef3c7', value: dash(stats?.pendingVerification), label: 'Pending Verification', subtitle: 'Bills to review', onPress: () => goToBills('director_approved') },
     { id: 'correction', icon: 'create', iconColor: '#e53935', iconBg: '#fdeaea', value: dash(stats?.correctionRequested), label: 'Correction Req.', subtitle: 'Needs action', onPress: () => goToBills('correction_requested') },
     { id: 'verified_today', icon: 'checkmark-circle', iconColor: '#43a047', iconBg: '#e8f5e9', value: dash(stats?.verifiedToday), label: 'Verified Today', subtitle: 'Bills', onPress: () => goToBills('verified') },
     { id: 'rejected', icon: 'close-circle', iconColor: '#e53935', iconBg: '#fdeaea', value: dash(stats?.rejected), label: 'Rejected', subtitle: 'Bills', onPress: () => goToBills('rejected') },
@@ -122,7 +122,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
   const pendingVerification = stats?.pendingVerification ?? 0;
 
   const tasks = useMemo(() => [
-    { label: 'Bills Pending Verification', count: dash(stats?.pendingVerification), onPress: () => goToBills('approved') },
+    { label: 'Bills Pending Verification', count: dash(stats?.pendingVerification), onPress: () => goToBills('director_approved') },
     { label: 'Correction Requested', count: dash(stats?.correctionRequested), onPress: () => goToBills('correction_requested') },
     { label: 'Bills Verified Today', count: dash(stats?.verifiedToday), onPress: () => goToBills('verified') },
     { label: 'Payments Ready', count: isLoadingPaymentStats ? '—' : (paymentStats?.paymentsReady ?? 0), onPress: () => navigation.navigate('Payments', { screen: 'PaymentList' }) },
@@ -160,7 +160,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
         </View>
 
         {pendingVerification > 0 ? (
-          <TouchableOpacity style={styles.alertBanner} onPress={() => goToBills('approved')} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.alertBanner} onPress={() => goToBills('director_approved')} activeOpacity={0.8}>
             <Ionicons name="alert-circle" size={15} color="#92400e" />
             <Text style={styles.alertText}>
               {pendingVerification} bill{pendingVerification !== 1 ? 's' : ''} awaiting verification
@@ -169,7 +169,7 @@ export function AccountsDashboardScreen({ navigation }: Props) {
           </TouchableOpacity>
         ) : null}
 
-        <SectionHeader title="Bill Verification" onViewAll={() => goToBills('approved')} />
+        <SectionHeader title="Bill Verification" onViewAll={() => goToBills('director_approved')} />
         <FlatList
           data={kpiRow1}
           keyExtractor={(item) => item.id}
@@ -201,13 +201,13 @@ export function AccountsDashboardScreen({ navigation }: Props) {
 
         <SectionHeader title="Quick Actions" />
         <View style={styles.qaGrid}>
-          <QuickAction icon="hourglass" color="#f59e0b" label="Pending Verification" onPress={() => goToBills('approved')} />
+          <QuickAction icon="hourglass" color="#f59e0b" label="Pending Verification" onPress={() => goToBills('director_approved')} />
           <QuickAction icon="receipt" color="#1e88e5" label="All Bills" onPress={() => goToBills()} />
           <QuickAction icon="card" color="#43a047" label="View Payments" onPress={() => navigation.navigate('Payments', { screen: 'PaymentList' })} />
           <QuickAction icon="notifications" color="#e53935" label="Notifications" onPress={goToNotifications} />
         </View>
 
-        <SectionHeader title="My Tasks" onViewAll={() => goToBills('approved')} />
+        <SectionHeader title="My Tasks" onViewAll={() => goToBills('director_approved')} />
         <View style={styles.listCard}>
           {tasks.map((task, idx) => (
             <TouchableOpacity

@@ -1,155 +1,399 @@
-import { GoogleGenerativeAI, type GenerateContentResult } from '@google/generative-ai';
+/**
+ * Gemini AI verification service — 3-Way comparison: Quotation + Purchase Order + Bill.
+ *
+ * Uses @google/genai (new SDK — replaces deprecated @google/generative-ai).
+ * Singleton client is managed in backend/src/config/gemini.ts.
+ *
+ * New output fields (v3 prompt):
+ *   overallMatch        — weighted score across all three documents
+ *   quotationMatch      — how closely the Bill aligns with the original Quotation
+ *   purchaseOrderMatch  — how closely the Bill aligns with the Purchase Order
+ */
 
+import {
+  getGeminiClient,
+  GEMINI_MODEL,
+  GEMINI_PROMPT_VERSION,
+  GEMINI_MAX_RETRIES,
+  GEMINI_TIMEOUT_MS,
+  GEMINI_MAX_OUTPUT_TOKENS,
+} from '@/config/gemini';
 import type { IAiDifference } from '@/modules/purchaseOrder/purchaseOrder.model';
-import type { AI_RECOMMENDATION, AI_RISK } from '@/constants/status';
+import type { AiRisk, AiRecommendation } from '@/constants/status';
 
-// ── Type defs ──────────────────────────────────────────────────────────────────
+// ── Output types ───────────────────────────────────────────────────────────────
+
+export interface GeminiTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 export interface GeminiVerificationOutput {
+  /** Weighted overall match — Rule Engine 40% + Gemini 60% */
   matchPercentage: number;
-  risk: typeof AI_RISK[keyof typeof AI_RISK];
-  recommendation: typeof AI_RECOMMENDATION[keyof typeof AI_RECOMMENDATION];
+  /** Gemini-computed quotation-vs-bill match (0-100) */
+  quotationMatch: number;
+  /** Gemini-computed PO-vs-bill match (0-100) */
+  purchaseOrderMatch: number;
+  risk: AiRisk;
+  recommendation: AiRecommendation;
   confidence: number;
   summary: string;
   differences: IAiDifference[];
+  modelVersion: string;
+  promptVersion: string;
+  tokenUsage: GeminiTokenUsage;
+  rawResponse: string;
+  promptSnapshot: string;
 }
 
-let client: GoogleGenerativeAI | null = null;
+// ── In-memory cache (5 min TTL) ────────────────────────────────────────────────
 
-function getClient(): GoogleGenerativeAI {
-  if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY environment variable is not set');
-    client = new GoogleGenerativeAI(apiKey);
+interface CacheEntry { result: GeminiVerificationOutput; expiresAt: number; }
+const _cache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 5 * 60_000;
+
+function cacheKey(
+  quotationJson: Record<string, unknown>,
+  poJson: Record<string, unknown>,
+  billJson: Record<string, unknown>,
+): string {
+  return [
+    String(quotationJson.quotationCode ?? ''),
+    String(poJson.poNumber ?? ''),
+    String(billJson.invoiceNumber ?? ''),
+    String(billJson.billCode ?? ''),
+  ].join('|');
+}
+
+function fromCache(key: string): GeminiVerificationOutput | null {
+  const entry = _cache.get(key);
+  if (!entry || Date.now() > entry.expiresAt) {
+    _cache.delete(key);
+    return null;
   }
-  return client;
+  return entry.result;
 }
 
-// ── JSON extraction from Gemini response ──────────────────────────────────────
-function extractJson(text: string): string {
-  // Gemini sometimes wraps JSON in ```json ... ``` fences
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) return (fenceMatch[1] ?? '').trim();
-  // Or starts with { ... }
-  const braceMatch = text.match(/\{[\s\S]*\}/);
-  if (braceMatch) return braceMatch[0];
-  return text.trim();
+function toCache(key: string, result: GeminiVerificationOutput): void {
+  _cache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS });
 }
 
-function validateOutput(raw: unknown): GeminiVerificationOutput {
-  if (typeof raw !== 'object' || raw === null) throw new Error('Gemini returned non-object');
+// ── 3-Way Prompt Builder ───────────────────────────────────────────────────────
 
-  const obj = raw as Record<string, unknown>;
-
-  const matchPercentage = typeof obj.matchPercentage === 'number' ? obj.matchPercentage : 0;
-  const risk = ['LOW', 'MEDIUM', 'HIGH'].includes(String(obj.risk)) ? String(obj.risk) as GeminiVerificationOutput['risk'] : 'HIGH';
-  const recommendation = ['APPROVE', 'MANUAL_REVIEW', 'REJECT'].includes(String(obj.recommendation))
-    ? String(obj.recommendation) as GeminiVerificationOutput['recommendation']
-    : 'MANUAL_REVIEW';
-  const confidence = typeof obj.confidence === 'number' ? obj.confidence : 50;
-  const summary = typeof obj.summary === 'string' ? obj.summary : 'AI analysis complete.';
-  const differences: IAiDifference[] = Array.isArray(obj.differences)
-    ? (obj.differences as IAiDifference[]).filter(
-        (d) => d && typeof d.field === 'string',
-      )
-    : [];
-
-  return { matchPercentage, risk, recommendation, confidence, summary, differences };
-}
-
-// ── Compare PO and Bill JSON via Gemini ───────────────────────────────────────
-export async function verifyWithGemini(
+function buildVerificationPrompt(
+  quotationJson: Record<string, unknown>,
   poJson: Record<string, unknown>,
   billJson: Record<string, unknown>,
   ruleEngineSummary: string,
-): Promise<GeminiVerificationOutput> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
+): string {
+  return `You are an enterprise ERP financial verification AI for an Indian Vendor Management System.
+Your job is to compare THREE documents simultaneously — the original Quotation, the Purchase Order, and the Vendor Invoice (Bill) — and produce a structured 3-way JSON risk assessment.
 
-  const prompt = `
-You are an enterprise ERP accounts verification AI. Compare the Purchase Order and Invoice Bill below.
-
-RULE ENGINE PRE-ANALYSIS:
+═══════════════════════════════════════════════════════════════
+RULE ENGINE PRE-ANALYSIS (deterministic checks already completed):
 ${ruleEngineSummary}
+═══════════════════════════════════════════════════════════════
 
-PURCHASE ORDER:
+DOCUMENT 1 — ORIGINAL QUOTATION (basis for negotiation):
+${JSON.stringify(quotationJson, null, 2)}
+
+DOCUMENT 2 — PURCHASE ORDER (legal commitment after Director Business Approval):
 ${JSON.stringify(poJson, null, 2)}
 
-INVOICE BILL:
+DOCUMENT 3 — VENDOR INVOICE / BILL (vendor's financial claim):
 ${JSON.stringify(billJson, null, 2)}
 
-TASK: Perform a detailed comparison and return STRICT JSON ONLY (no markdown, no explanation outside JSON):
+═══════════════════════════════════════════════════════════════
+TASK: Perform a comprehensive 3-way semantic comparison.
+Evaluate consistency across all three documents.
+
+FIELDS TO COMPARE (check every field with data present):
+1.  Vendor Name — semantic match across all 3 docs
+2.  Vendor GST Number — must match exactly in all 3 (uppercase GSTIN format)
+3.  Vendor PAN Number — if present, must match
+4.  Quotation Number — must appear on PO and ideally on Bill
+5.  PO Number — must appear on the Bill
+6.  Invoice Number — unique on the Bill
+7.  Invoice Date — must not pre-date the PO date
+8.  Quotation Date vs PO Date vs Invoice Date — timeline consistency
+9.  Department Name — consistent across docs
+10. Product / Service Names — semantic match (allow minor wording)
+11. Quantity — exact numeric match per line item (Quotation → PO → Bill)
+12. Unit Rate — within 2% tolerance; flag any Price escalation from Quotation to Bill
+13. Tax / TDS amounts — must match applicable GST slabs
+14. GST Rate and GST Amount — critical; must match across all 3
+15. Discount — applied consistently
+16. Quotation Total — base reference amount
+17. PO Grand Total — legal commitment amount (must align with Quotation within approved variance)
+18. Bill Grand Total — vendor claim (must align with PO within 5%; >15% is critical)
+19. HSN / SAC Codes — consistent if present
+20. Payment Terms — must match between PO and Bill
+21. Delivery Terms — consistent
+22. Currency — must match across all 3
+23. Required / Delivery Date — Bill delivery must honour PO date
+24. Budget / Department spend — flag if Bill exceeds Quotation significantly
+
+RISK CLASSIFICATION RULES:
+- quotationMatch AND purchaseOrderMatch both 95-100 → risk = "LOW"
+- either score 75-94 (no critical issues) → risk = "MEDIUM"
+- either score < 75 OR any critical mismatch → risk = "HIGH"
+
+RECOMMENDATION RULES:
+- LOW risk + no critical issues → "APPROVE"
+- MEDIUM risk or minor discrepancies → "MANUAL_REVIEW"
+- HIGH risk OR: GSTIN mismatch, Bill >15% above PO, Invoice pre-dates PO, duplicate invoice → "REJECT"
+
+SEVERITY FOR EACH DIFFERENCE:
+- "HIGH"   — Potential fraud, regulatory violation, >15% financial variance, GSTIN fraud
+- "MEDIUM" — Significant discrepancy requiring manual review
+- "LOW"    — Minor difference within tolerance
+
+CRITICAL INSTRUCTIONS:
+- Perform SEMANTIC validation — the Rule Engine handles exact arithmetic.
+- Focus on fraud detection, regulatory compliance, and business reasonableness.
+- Flag price escalation from Quotation to Bill (vendor charging more than what was quoted).
+- Do NOT repeat differences already flagged by the Rule Engine unless adding business context.
+- Return ONLY valid JSON. No markdown fences. No text outside the JSON object.
+- Numbers must be plain integers or decimals (not strings).
+
+═══════════════════════════════════════════════════════════════
+RETURN THIS EXACT JSON STRUCTURE:
 
 {
-  "matchPercentage": <0-100 integer>,
+  "overallMatch": <integer 0-100, weighted consistency across all 3 documents>,
+  "quotationMatch": <integer 0-100, how closely the Bill aligns with the Quotation>,
+  "purchaseOrderMatch": <integer 0-100, how closely the Bill aligns with the PO>,
+  "confidence": <integer 0-100>,
   "risk": "<LOW|MEDIUM|HIGH>",
   "recommendation": "<APPROVE|MANUAL_REVIEW|REJECT>",
-  "confidence": <0-100 integer>,
-  "summary": "<one paragraph summary for Accounts Department>",
+  "summary": "<2-3 sentences for Director and Accounts — be specific about key findings>",
   "differences": [
     {
       "field": "<field name>",
-      "purchaseOrder": <PO value>,
-      "bill": <Bill value>,
-      "difference": "<description of difference>"
+      "purchaseOrder": "<PO value>",
+      "bill": "<Invoice value>",
+      "difference": "<clear description of the discrepancy>",
+      "severity": "<LOW|MEDIUM|HIGH>"
     }
   ]
 }
 
-RISK RULES:
-- matchPercentage 95-100 → risk LOW
-- matchPercentage 75-94  → risk MEDIUM
-- matchPercentage < 75   → risk HIGH
-
-RECOMMENDATION RULES:
-- LOW risk and no critical issues → APPROVE
-- MEDIUM risk or minor discrepancies → MANUAL_REVIEW
-- HIGH risk or critical mismatches (vendor fraud, GST mismatch, large price differences) → REJECT
-
-COMPARISON CHECKLIST (check all):
-1. PO Number on Invoice vs PO Number
-2. Vendor Name match
-3. Vendor GST number match
-4. Department
-5. Item names, quantities, unit prices
-6. GST amounts, tax amounts, discounts
-7. Grand Total
-8. Invoice date vs PO date (invoice should not pre-date PO)
-9. Duplicate invoice risk
-10. Arithmetic correctness (quantity × price = line total)
+The "differences" array must contain ONLY actual discrepancies. Empty array [] if everything matches.
 `;
+}
 
-  let result: GenerateContentResult;
-  try {
-    result = await model.generateContent(prompt);
-  } catch (err) {
-    throw new Error(`Gemini API call failed: ${String(err)}`);
+// ── Response validation ────────────────────────────────────────────────────────
+
+function extractJsonFromText(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced?.[1]) return fenced[1].trim();
+  const braceStart = text.indexOf('{');
+  const braceEnd   = text.lastIndexOf('}');
+  if (braceStart !== -1 && braceEnd > braceStart) {
+    return text.slice(braceStart, braceEnd + 1);
+  }
+  return text.trim();
+}
+
+function validateDifference(d: unknown): IAiDifference | null {
+  if (typeof d !== 'object' || d === null) return null;
+  const obj = d as Record<string, unknown>;
+  if (typeof obj.field !== 'string') return null;
+  return {
+    field:         obj.field,
+    purchaseOrder: obj.purchaseOrder ?? obj.po ?? null,
+    bill:          obj.bill ?? null,
+    difference:    typeof obj.difference === 'string' ? obj.difference : String(obj.difference ?? ''),
+    severity:      (['LOW', 'MEDIUM', 'HIGH'] as const).includes(obj.severity as never)
+      ? (obj.severity as 'LOW' | 'MEDIUM' | 'HIGH')
+      : 'MEDIUM',
+  };
+}
+
+function validateOutput(
+  raw: unknown,
+  rawText: string,
+  prompt: string,
+  usage: GeminiTokenUsage,
+): GeminiVerificationOutput {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new Error('Gemini returned non-object JSON');
   }
 
-  const rawText = result.response.text();
-  const jsonStr = extractJson(rawText);
-  let parsed: unknown;
+  const obj = raw as Record<string, unknown>;
 
+  // Support overallMatch (v3) and legacy matchScore / matchPercentage
+  const rawScore = obj.overallMatch ?? obj.matchScore ?? obj.matchPercentage;
+  const matchPercentage = typeof rawScore === 'number'
+    ? Math.min(100, Math.max(0, Math.round(rawScore)))
+    : 50;
+
+  const quotationMatch = typeof obj.quotationMatch === 'number'
+    ? Math.min(100, Math.max(0, Math.round(obj.quotationMatch)))
+    : matchPercentage;
+
+  const purchaseOrderMatch = typeof obj.purchaseOrderMatch === 'number'
+    ? Math.min(100, Math.max(0, Math.round(obj.purchaseOrderMatch)))
+    : matchPercentage;
+
+  const risk: AiRisk = (['LOW', 'MEDIUM', 'HIGH'] as const).includes(obj.risk as never)
+    ? (obj.risk as AiRisk)
+    : matchPercentage >= 95 ? 'LOW' : matchPercentage >= 75 ? 'MEDIUM' : 'HIGH';
+
+  const recommendation: AiRecommendation = (['APPROVE', 'MANUAL_REVIEW', 'REJECT'] as const).includes(obj.recommendation as never)
+    ? (obj.recommendation as AiRecommendation)
+    : 'MANUAL_REVIEW';
+
+  const confidence = typeof obj.confidence === 'number'
+    ? Math.min(100, Math.max(0, Math.round(obj.confidence)))
+    : 70;
+
+  const summary = typeof obj.summary === 'string' && obj.summary.trim()
+    ? obj.summary.trim()
+    : 'AI 3-way analysis complete. Review differences below.';
+
+  const differences: IAiDifference[] = Array.isArray(obj.differences)
+    ? (obj.differences as unknown[]).map(validateDifference).filter(Boolean) as IAiDifference[]
+    : [];
+
+  return {
+    matchPercentage,
+    quotationMatch,
+    purchaseOrderMatch,
+    risk,
+    recommendation,
+    confidence,
+    summary,
+    differences,
+    modelVersion:   GEMINI_MODEL,
+    promptVersion:  GEMINI_PROMPT_VERSION,
+    tokenUsage:     usage,
+    rawResponse:    rawText.slice(0, 5000),
+    promptSnapshot: prompt.slice(0, 8000),
+  };
+}
+
+// ── Retry + timeout wrapper ────────────────────────────────────────────────────
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxRetries: number, label: string): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < maxRetries) {
+        const delay = 1000 * (attempt + 1);
+        console.warn(`[Gemini] ${label} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms:`, err);
+        await new Promise((res) => setTimeout(res, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// ── 3-Way Quotation + PO + Bill comparison ────────────────────────────────────
+
+export async function verifyWithGemini(
+  quotationJson: Record<string, unknown>,
+  poJson: Record<string, unknown>,
+  billJson: Record<string, unknown>,
+  ruleEngineSummary: string,
+): Promise<GeminiVerificationOutput> {
+  const key = cacheKey(quotationJson, poJson, billJson);
+  const cached = fromCache(key);
+  if (cached) {
+    console.info('[Gemini] Returning cached 3-way verification result');
+    return cached;
+  }
+
+  const prompt = buildVerificationPrompt(quotationJson, poJson, billJson, ruleEngineSummary);
+  const client = getGeminiClient();
+
+  const rawText = await withRetry(
+    () => withTimeout(
+      (async () => {
+        const response = await client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+            maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+          },
+        });
+        return response;
+      })(),
+      GEMINI_TIMEOUT_MS,
+      'Gemini 3-way verification',
+    ).then((response) => {
+      const usage: GeminiTokenUsage = {
+        inputTokens:  response.usageMetadata?.promptTokenCount  ?? 0,
+        outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+        totalTokens:  response.usageMetadata?.totalTokenCount   ?? 0,
+      };
+      return { text: response.text ?? '', usage };
+    }),
+    GEMINI_MAX_RETRIES,
+    'Quotation + PO + Bill 3-way verification',
+  );
+
+  const { text, usage } = rawText as { text: string; usage: GeminiTokenUsage };
+  const jsonStr = extractJsonFromText(text);
+
+  let parsed: unknown;
   try {
     parsed = JSON.parse(jsonStr);
   } catch {
-    throw new Error(`Gemini returned invalid JSON: ${rawText.slice(0, 200)}`);
+    throw new Error(`Gemini returned invalid JSON. Raw (first 300 chars): ${text.slice(0, 300)}`);
   }
 
-  return validateOutput(parsed);
+  const result = validateOutput(parsed, text, prompt, usage);
+  toCache(key, result);
+  return result;
 }
 
-// ── Vision: extract text from an image file ───────────────────────────────────
-export async function extractTextFromImage(
-  imageBase64: string,
-  mimeType: string,
-): Promise<string> {
-  const model = getClient().getGenerativeModel({ model: 'gemini-1.5-flash' });
+// ── Vision: extract text from invoice images ───────────────────────────────────
 
-  const result = await model.generateContent([
-    {
-      inlineData: { data: imageBase64, mimeType },
-    },
-    'Extract all text from this invoice image. Include invoice number, date, vendor details, PO number, all line items with quantities and prices, GST/tax amounts, and grand total. Return as structured text.',
-  ]);
+export async function extractTextFromImage(imageBase64: string, mimeType: string): Promise<string> {
+  const client = getGeminiClient();
 
-  return result.response.text();
+  const response = await withRetry(
+    () => withTimeout(
+      client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          {
+            text: `Extract ALL text from this vendor invoice image.
+Return structured text including:
+- Invoice Number, Invoice Date, PO Number (if present)
+- Vendor Name, Vendor GST Number, Vendor PAN Number (if present)
+- Department / Billing Address
+- Line items: Product/Service name, HSN/SAC code, Quantity, Unit Rate, GST Rate, GST Amount, Total
+- Subtotal, GST Total, Tax Total, Discount, Grand Total
+- Payment Terms, Currency
+Format each field on its own line as: FIELD_NAME: value`,
+          },
+          { inlineData: { mimeType, data: imageBase64 } },
+        ],
+      }),
+      GEMINI_TIMEOUT_MS,
+      'Gemini Vision OCR',
+    ),
+    GEMINI_MAX_RETRIES,
+    'Invoice OCR',
+  );
+
+  return response.text ?? '';
 }

@@ -1,12 +1,12 @@
 export const BILL_STATUSES = [
   'draft',
   'submitted',
-  'negotiation',
-  'resubmitted',
-  'approved',
-  'approval_rejected',
-  'correction_requested',
+  'ai_verified',
+  'director_approved',
+  'director_rejected',
+  'director_correction',
   'verified',
+  'correction_requested',
   'rejected',
   'payment_pending',
   'paid',
@@ -14,34 +14,15 @@ export const BILL_STATUSES = [
 ] as const;
 export type BillStatus = (typeof BILL_STATUSES)[number];
 
-export const APPROVAL_ROUTES = ['ceo', 'directors'] as const;
-export type ApprovalRoute = (typeof APPROVAL_ROUTES)[number];
-
-export const BILL_APPROVAL_DECISIONS = ['approved', 'negotiation', 'rejected'] as const;
-export type BillApprovalDecision = (typeof BILL_APPROVAL_DECISIONS)[number];
-
-export type BillApprovalStatus = BillApprovalDecision | 'pending';
-
-export interface BillApproval {
-  approverId: string;
-  approverName: string;
-  role: string;
-  decision: BillApprovalStatus;
-  remarks?: string;
-  approvedAt: string | null;
-}
-
-export interface CeoBillStats {
-  pendingApprovals: number;
-  approvedToday: number;
-}
+export const DIRECTOR_FINANCIAL_DECISIONS = ['approved', 'rejected', 'correction_required'] as const;
+export type DirectorFinancialDecision = (typeof DIRECTOR_FINANCIAL_DECISIONS)[number];
 
 export interface DirectorBillStats {
-  pending: number;
-  negotiation: number;
-  resubmitted: number;
+  pendingFinancialApprovals: number;
   approvedToday: number;
   rejectedToday: number;
+  correctionToday: number;
+  highRiskBills: number;
 }
 
 export interface BillFileVersion {
@@ -89,12 +70,11 @@ export interface Bill {
   verifiedByName?: string;
   verifiedAt?: string;
   decisionHistory: BillDecisionRecord[];
-  approvalRemarks?: string;
-  billApprovals: BillApproval[];
-  approvalRoute: ApprovalRoute;
-  billApprovedAt?: string;
-  billRejectedAt?: string;
-  billNegotiationAt?: string;
+  // Director Financial Approval (Approval 2 — after 3-Way AI)
+  directorFinancialDecision?: DirectorFinancialDecision;
+  directorFinancialBy?: string;
+  directorFinancialAt?: string;
+  directorFinancialRemarks?: string;
   status: BillStatus;
   createdAt: string;
   updatedAt: string;

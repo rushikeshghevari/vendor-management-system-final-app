@@ -35,4 +35,15 @@ export const env = {
   geminiApiKey: process.env.GEMINI_API_KEY,
 } as const;
 
+// Print a clear startup notice so the operator knows the AI mode at boot time.
+if (!process.env.GEMINI_API_KEY) {
+  console.warn(
+    '[AI] GEMINI_API_KEY is not set. ' +
+    'AI verification will run in Rule Engine only mode. ' +
+    'Set GEMINI_API_KEY in .env to enable full Gemini analysis.',
+  );
+} else {
+  console.info('[AI] Gemini AI is configured. Model: gemini-2.0-flash. Full AI verification enabled.');
+}
+
 export const isProduction = env.nodeEnv === 'production';

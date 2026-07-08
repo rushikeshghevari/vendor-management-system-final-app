@@ -26,6 +26,8 @@ apiClient.interceptors.request.use(async (config) => {
   if (accessToken) {
     config.headers.set('Authorization', `Bearer ${accessToken}`);
   }
+  const fullUrl = (config.baseURL ?? '') + (config.url ?? '');
+  console.log(`[http] → ${config.method?.toUpperCase()} ${fullUrl}`);
   return config;
 });
 

@@ -19,11 +19,11 @@ import type { AccountsBillsStackParamList } from '@/navigation/types';
 const PAGE_SIZE = 5;
 const SKELETON_PLACEHOLDERS = [1, 2, 3, 4];
 
-// Accounts never sees Draft/Submitted/Negotiation/Resubmitted (the CEO/Director approval
-// stage) or the upstream `approval_rejected` outcome — these are the only statuses the Bill
-// List reviews, starting from `approved` (the bill has cleared CEO/Director approval).
+// Accounts never sees Draft/Submitted/AI Verified (the Director Financial Approval
+// stage) or the upstream `director_rejected` outcome — these are the only statuses the Bill
+// List reviews, starting from `director_approved` (the bill has cleared Director Financial Approval).
 const STATUS_TABS: { value: BillStatus; label: string }[] = [
-  { value: 'approved', label: 'Awaiting Verification' },
+  { value: 'director_approved', label: 'Awaiting Verification' },
   { value: 'correction_requested', label: 'Correction Requested' },
   { value: 'verified', label: 'Verified' },
   { value: 'rejected', label: 'Rejected' },
@@ -36,7 +36,7 @@ export function AccountsBillListScreen({ navigation, route }: Props) {
   const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusTab, setStatusTab] = useState<BillStatus>(route.params?.initialStatus ?? 'approved');
+  const [statusTab, setStatusTab] = useState<BillStatus>(route.params?.initialStatus ?? 'director_approved');
   const [page, setPage] = useState(1);
   const [isFilterVisible, setIsFilterVisible] = useState(false);
   const [filters, setFilters] = useState<AccountsBillFilters>({});

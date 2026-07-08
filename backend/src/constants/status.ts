@@ -51,15 +51,21 @@ export type ApprovalDecision = (typeof APPROVAL_DECISION)[keyof typeof APPROVAL_
 
 export const BILL_STATUS = {
   DRAFT: 'draft',
+  // Department User submitted — AI verification pipeline running in background.
   SUBMITTED: 'submitted',
-  // CEO/Director approval stage — mirrors QUOTATION_STATUS's negotiation/resubmitted/approved.
-  NEGOTIATION: 'negotiation',
-  RESUBMITTED: 'resubmitted',
-  APPROVED: 'approved',
-  // Distinct from Accounts' own REJECTED below — see bill.service.ts scopeToOwner comment for why.
-  APPROVAL_REJECTED: 'approval_rejected',
-  CORRECTION_REQUESTED: 'correction_requested',
+  // 3-Way AI (Quotation + PO + Bill) complete — waiting for Director Financial Approval.
+  AI_VERIFIED: 'ai_verified',
+  // Director approved the bill financially — goes to Accounts for verification.
+  DIRECTOR_APPROVED: 'director_approved',
+  // Director rejected — terminal; never reaches Accounts.
+  DIRECTOR_REJECTED: 'director_rejected',
+  // Director requested correction — bill returns to Department User for amendment.
+  DIRECTOR_CORRECTION: 'director_correction',
+  // Accounts verified — goes to Payment Department.
   VERIFIED: 'verified',
+  // Accounts requested correction — bill returns to Department User.
+  CORRECTION_REQUESTED: 'correction_requested',
+  // Accounts rejected — terminal.
   REJECTED: 'rejected',
   PAYMENT_PENDING: 'payment_pending',
   PAID: 'paid',

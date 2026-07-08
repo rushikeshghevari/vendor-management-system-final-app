@@ -60,6 +60,7 @@ interface BroadcastInput {
 }
 
 export const notificationsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getNotifications: builder.query<Notification[], NotificationListQuery | void>({
       query: (params) => ({ url: '/notifications', method: 'GET', params: { limit: 50, ...params } }),
@@ -177,7 +178,9 @@ export const {
   useRecordNotificationDeliveryMutation,
 } = notificationsApi;
 
-// Polled rather than pushed — keeps the bell badge accurate even when FCM is unavailable.
+// Polled as a fallback for when FCM is unavailable. FCM keeps the badge accurate in
+// real-time via tag invalidation (markNotificationRead / recordNotificationDelivery).
+// 60s interval halves the polling load vs the previous 30s: 15 req/15min instead of 30.
 export function useGetUnreadNotificationCountQuery() {
-  return useGetUnreadNotificationCountQueryBase(undefined, { pollingInterval: 30000 });
+  return useGetUnreadNotificationCountQueryBase(undefined, { pollingInterval: 60000 });
 }

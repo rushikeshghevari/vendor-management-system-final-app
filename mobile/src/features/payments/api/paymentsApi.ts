@@ -1,4 +1,6 @@
 import { baseApi } from '@/store/baseApi';
+import { apiClient } from '@/services/apiClient';
+import { normalizeApiError } from '@/services/apiError';
 import type {
   AccountsPaymentStats,
   MyPaymentStats,
@@ -123,6 +125,7 @@ export interface PaymentListFilters {
 }
 
 export const paymentsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getPayments: builder.query<Payment[], PaymentListFilters | void>({
       query: (filters) => ({ url: '/payments', method: 'GET', params: { limit: 100, ...filters } }),
@@ -139,9 +142,23 @@ export const paymentsApi = baseApi.injectEndpoints({
       providesTags: (_result, _error, id) => [{ type: 'Payment', id }],
     }),
 
-    getPaymentByQuotation: builder.query<Payment, string>({
-      query: (quotationId) => ({ url: `/payments/by-quotation/${quotationId}`, method: 'GET' }),
-      transformResponse: (raw: RawPayment) => toPayment(raw),
+    getPaymentByQuotation: builder.query<Payment | null, string>({
+      // 404 means "no payment created yet for this quotation" — a valid data state, not an
+      // error. Using queryFn lets us intercept the 404 before axiosBaseQuery logs it as an
+      // error and return null instead of putting the query into isError state.
+      queryFn: async (quotationId) => {
+        try {
+          const res = await apiClient.request<{ success: boolean; message: string; data: RawPayment }>({
+            url: `/payments/by-quotation/${quotationId}`,
+            method: 'GET',
+          });
+          return { data: toPayment(res.data.data) };
+        } catch (err) {
+          const normalized = normalizeApiError(err);
+          if (normalized.status === 404) return { data: null };
+          return { error: normalized };
+        }
+      },
       providesTags: (_result, _error, quotationId) => [{ type: 'Payment', id: `QUOTATION_${quotationId}` }],
     }),
 

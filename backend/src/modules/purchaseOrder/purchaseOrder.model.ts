@@ -21,11 +21,24 @@ export interface IAiDifference {
   purchaseOrder: unknown;
   bill: unknown;
   difference: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+// ─── Sub-document: AI Token Usage ─────────────────────────────────────────────
+export interface IAiTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
 }
 
 // ─── Sub-document: AI Verification Result ─────────────────────────────────────
 export interface IAiVerification {
+  /** Weighted overall score: Rule Engine 40% + Gemini 60% */
   matchPercentage: number;
+  /** How closely the Quotation matches the Bill (0-100) */
+  quotationMatch?: number;
+  /** How closely the Purchase Order matches the Bill (0-100) */
+  purchaseOrderMatch?: number;
   risk: AiRisk;
   recommendation: AiRecommendation;
   confidence: number;
@@ -34,6 +47,12 @@ export interface IAiVerification {
   ruleEngineScore: number;
   verifiedAt: Date;
   ocrExtractedData?: Record<string, unknown>;
+  // Metadata added in v2 (Gemini 2.0 + new SDK)
+  executionTimeMs?: number;
+  promptVersion?: string;
+  modelVersion?: string;
+  tokenUsage?: IAiTokenUsage;
+  aiProvider?: 'gemini' | 'rule_engine_only';
 }
 
 // ─── Main Document Interface ───────────────────────────────────────────────────
@@ -87,21 +106,39 @@ const aiDifferenceSchema = new Schema<IAiDifference>(
     purchaseOrder: { type: Schema.Types.Mixed },
     bill:          { type: Schema.Types.Mixed },
     difference:    { type: String, required: true },
+    severity:      { type: String, enum: ['LOW', 'MEDIUM', 'HIGH'] },
+  },
+  { _id: false },
+);
+
+const aiTokenUsageSchema = new Schema<IAiTokenUsage>(
+  {
+    inputTokens:  { type: Number, required: true, min: 0 },
+    outputTokens: { type: Number, required: true, min: 0 },
+    totalTokens:  { type: Number, required: true, min: 0 },
   },
   { _id: false },
 );
 
 const aiVerificationSchema = new Schema<IAiVerification>(
   {
-    matchPercentage:   { type: Number, required: true, min: 0, max: 100 },
-    risk:              { type: String, enum: Object.values(AI_RISK), required: true },
-    recommendation:    { type: String, enum: Object.values(AI_RECOMMENDATION), required: true },
-    confidence:        { type: Number, required: true, min: 0, max: 100 },
-    summary:           { type: String, required: true },
-    differences:       { type: [aiDifferenceSchema], default: [] },
-    ruleEngineScore:   { type: Number, required: true, min: 0, max: 100 },
-    verifiedAt:        { type: Date, required: true },
-    ocrExtractedData:  { type: Schema.Types.Mixed },
+    matchPercentage:    { type: Number, required: true, min: 0, max: 100 },
+    quotationMatch:     { type: Number, min: 0, max: 100 },
+    purchaseOrderMatch: { type: Number, min: 0, max: 100 },
+    risk:             { type: String, enum: Object.values(AI_RISK), required: true },
+    recommendation:   { type: String, enum: Object.values(AI_RECOMMENDATION), required: true },
+    confidence:       { type: Number, required: true, min: 0, max: 100 },
+    summary:          { type: String, required: true },
+    differences:      { type: [aiDifferenceSchema], default: [] },
+    ruleEngineScore:  { type: Number, required: true, min: 0, max: 100 },
+    verifiedAt:       { type: Date, required: true },
+    ocrExtractedData: { type: Schema.Types.Mixed },
+    // v2 metadata fields
+    executionTimeMs:  { type: Number, min: 0 },
+    promptVersion:    { type: String, trim: true },
+    modelVersion:     { type: String, trim: true },
+    tokenUsage:       { type: aiTokenUsageSchema },
+    aiProvider:       { type: String, enum: ['gemini', 'rule_engine_only'] },
   },
   { _id: false },
 );
@@ -143,7 +180,7 @@ const purchaseOrderSchema = new Schema<IPurchaseOrder>(
   { timestamps: true },
 );
 
-purchaseOrderSchema.index({ quotation: 1 });
+// { quotation: 1 } index is created automatically by the unique:true on the field definition.
 purchaseOrderSchema.index({ department: 1, status: 1 });
 purchaseOrderSchema.index({ createdBy: 1, status: 1 });
 purchaseOrderSchema.index({ vendor: 1 });

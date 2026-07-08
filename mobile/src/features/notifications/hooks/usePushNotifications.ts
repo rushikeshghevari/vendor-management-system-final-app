@@ -58,7 +58,6 @@ async function createNotificationChannels(): Promise<void> {
     lightColor: '#2563EB',
     enableVibrate: true,
     showBadge: true,
-    sound: 'default',
   });
 
   await Notifications.setNotificationChannelAsync('vms_approvals', {
@@ -68,7 +67,6 @@ async function createNotificationChannels(): Promise<void> {
     lightColor: '#D97706',
     enableVibrate: true,
     showBadge: true,
-    sound: 'default',
     description: 'Quotation and bill approval requests',
   });
 
@@ -79,7 +77,6 @@ async function createNotificationChannels(): Promise<void> {
     lightColor: '#DC2626',
     enableVibrate: true,
     showBadge: true,
-    sound: 'default',
     bypassDnd: true,
     description: 'Critical system alerts that bypass Do Not Disturb',
   });
@@ -91,7 +88,6 @@ async function createNotificationChannels(): Promise<void> {
     lightColor: '#16A34A',
     enableVibrate: true,
     showBadge: true,
-    sound: 'default',
     description: 'Payment status updates',
   });
 
@@ -181,18 +177,28 @@ export function usePushNotifications() {
       const target = resolveDeepLinkTarget(data);
       if (!target) return;
 
-      if (target.rootScreen === 'NotificationCenter') {
-        navigation.navigate('NotificationCenter', { screen: 'NotificationList', params: undefined });
+      if (target.rootScreen === 'QuotationApproval') {
+        // Director/CEO approval notifications bypass the notification list entirely and open
+        // the dedicated approval screen in one tap.
+        navigation.navigate('QuotationApproval', {
+          quotationId: target.params.quotationId ?? '',
+          notificationId: target.params.notificationId,
+        });
+        return;
       }
-      // For 'Main', deep-link to the specific detail screen — navigation.navigate('Main') is
-      // a fallback; individual screens handle params via their own route params.
-      // We navigate to NotificationCenter → NotificationDetails which then shows a "View" button
-      // for the resource — this is the safest cross-role-compatible deep link.
-      if (data.notificationType) {
-        // Navigate to the notification center so the user sees the notification detail
-        // (which itself has a "View <module>" button).
-        navigation.navigate('NotificationCenter', { screen: 'NotificationList', params: undefined });
+
+      if (target.rootScreen === 'BillFinancialApproval') {
+        // Director Financial Approval notifications open the dedicated approval screen directly.
+        navigation.navigate('BillFinancialApproval', {
+          billId: target.params.billId ?? '',
+          notificationId: target.params.notificationId,
+        });
+        return;
       }
+
+      // All other modules: open the Notification Center so the user sees the context before
+      // navigating into the module. The notification list's "View" button handles the final hop.
+      navigation.navigate('NotificationCenter', { screen: 'NotificationList', params: undefined });
     },
     [navigation],
   );
@@ -301,13 +307,18 @@ export function usePushNotifications() {
     };
   }, [handleNotificationResponse]);
 
-  // Token refresh — FCM rotates tokens; re-register automatically
+  // Token refresh — FCM rotates tokens; re-register automatically.
+  // Guard: skip if the incoming token equals the one already registered this session.
+  // Without this check, getDevicePushTokenAsync() (Path A) and addPushTokenListener
+  // (Path B) both fire on first launch with the same token, producing a duplicate POST.
   useEffect(() => {
     const sub = Notifications.addPushTokenListener((pushToken) => {
       if (!isAuthenticated || !pushToken.data) return;
-      registeredTokenRef.current = pushToken.data as string;
+      const newToken = pushToken.data as string;
+      if (newToken === registeredTokenRef.current) return;
+      registeredTokenRef.current = newToken;
       registerDevice({
-        token:      pushToken.data as string,
+        token:      newToken,
         deviceId:   deviceIdRef.current,
         platform:   getPlatform(),
         deviceName: getDeviceName(),

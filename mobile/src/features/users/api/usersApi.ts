@@ -57,6 +57,7 @@ export interface UpdateUserInput {
 }
 
 export const usersApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getUsers: builder.query<AppUser[], void>({
       query: () => ({ url: '/users', method: 'GET', params: { limit: 100 } }),

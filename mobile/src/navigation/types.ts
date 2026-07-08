@@ -135,13 +135,11 @@ export type DirectorTabParamList = {
   Profile: undefined;
 };
 
-/** Bottom tabs for the `ceo` role — mirrors DirectorTabParamList exactly. The CEO only ever
- *  reviews quotations/bills within the CEO Approval Limit (see quotationService/billService
- *  scopeToOwner). */
+/** Bottom tabs for the `ceo` role. CEO only reviews Quotations (within the CEO Approval Limit).
+ *  Director Financial Approval of Bills is Director-only, not CEO. */
 export type CeoTabParamList = {
   Dashboard: undefined;
   PendingQuotations: NavigatorScreenParams<QuotationsStackParamList> | undefined;
-  PendingBillApprovals: NavigatorScreenParams<BillsStackParamList> | undefined;
   Reports: undefined;
   Profile: undefined;
 };
@@ -168,6 +166,12 @@ export type RootStackParamList = {
   // icon; Back always pops straight back to whatever tab/screen was visible underneath,
   // and selecting the Profile tab is therefore never affected by this screen having been open.
   NotificationCenter: NavigatorScreenParams<NotificationsStackParamList> | undefined;
+  // Root-level so it's directly reachable from a push notification tap regardless of which
+  // tab/stack the Director/CEO is currently on. Back always returns to wherever they were.
+  QuotationApproval: { quotationId: string; notificationId?: string };
+  // Root-level so Directors can reach this directly from a `bill_financial_approval_required`
+  // notification tap, regardless of which tab they are currently on.
+  BillFinancialApproval: { billId: string; notificationId?: string };
 };
 
 declare global {

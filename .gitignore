@@ -10,3 +10,9 @@ node_modules/
 
 # Cloudflare tunnel temp logs
 /tmp/cf-tunnel-*.log
+
+# MongoDB migration backup (contains real user data — never commit)
+migration_backup/
+
+# Claude Code local settings
+.claude/settings.local.json

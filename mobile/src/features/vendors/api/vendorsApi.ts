@@ -81,6 +81,7 @@ export interface VendorFormInput {
 }
 
 export const vendorsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getVendors: builder.query<Vendor[], void>({
       query: () => ({ url: '/vendors', method: 'GET', params: { limit: 100 } }),

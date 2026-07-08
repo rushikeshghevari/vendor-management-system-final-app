@@ -5,6 +5,7 @@ export interface SystemSettings {
 }
 
 export const settingsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getSystemSettings: builder.query<SystemSettings, void>({
       query: () => ({ url: '/settings', method: 'GET' }),

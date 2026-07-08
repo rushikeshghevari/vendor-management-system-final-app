@@ -200,6 +200,7 @@ export const purchaseOrderService = {
     const aiResult = await runAiVerification({
       po,
       bill: billWithVendor as unknown as Parameters<typeof runAiVerification>[0]['bill'],
+      actor,
     });
 
     // Store results on PO

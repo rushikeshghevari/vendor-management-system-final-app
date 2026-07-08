@@ -4,8 +4,7 @@ import { BILL_STATUS } from '@/constants/status';
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id');
 
-// `billCode`, `vendor`, `department`, and `createdBy` are deliberately absent — all four are
-// always derived server-side from the Approved Quotation, never trusted from the body.
+// `billCode`, `vendor`, `department`, and `createdBy` are always derived server-side.
 export const createBillSchema = z.object({
   quotation: objectId,
   invoiceNumber: z.string().trim().min(1, 'Invoice number is required'),
@@ -20,6 +19,25 @@ export const createBillSchema = z.object({
 
 export const updateBillSchema = createBillSchema.omit({ quotation: true }).partial();
 
+// Director Financial Approval decision (Approval 2 — after 3-Way AI).
+// Decisions: approved, rejected, correction_required.
+// Remarks are mandatory for anything other than approved.
+export const billFinancialDecisionSchema = z
+  .object({
+    decision: z.enum(['approved', 'rejected', 'correction_required']),
+    remarks: z.string().trim().max(2000).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.decision !== 'approved' && !data.remarks) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['remarks'],
+        message: 'Remarks are mandatory for Rejection and Correction Required decisions',
+      });
+    }
+  });
+
+// Accounts decision (3-way: Verified, Correction Requested, Rejected).
 export const billDecisionSchema = z
   .object({
     decision: z.enum([BILL_STATUS.VERIFIED, BILL_STATUS.CORRECTION_REQUESTED, BILL_STATUS.REJECTED]),
@@ -31,22 +49,6 @@ export const billDecisionSchema = z
         code: 'custom',
         path: ['remarks'],
         message: 'Remarks are mandatory for Correction Requested and Rejection decisions',
-      });
-    }
-  });
-
-// CEO/Director approval stage — identical shape to quotation.validation.ts's decisionSchema.
-export const billApprovalDecisionSchema = z
-  .object({
-    decision: z.enum(['approved', 'negotiation', 'rejected']),
-    remarks: z.string().trim().max(1000).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.decision !== 'approved' && !data.remarks) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['remarks'],
-        message: 'Remarks are mandatory for Negotiation and Rejection decisions',
       });
     }
   });
@@ -63,13 +65,12 @@ export const billListQuerySchema = z.object({
   vendor: objectId.optional(),
   quotation: objectId.optional(),
   search: z.string().optional(),
-  // Filters the Accounts Bill List by invoice date — inclusive on both ends.
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
 });
 
 export type CreateBillInput = z.infer<typeof createBillSchema>;
 export type UpdateBillInput = z.infer<typeof updateBillSchema>;
+export type BillFinancialDecisionInput = z.infer<typeof billFinancialDecisionSchema>;
 export type BillDecisionInput = z.infer<typeof billDecisionSchema>;
-export type BillApprovalDecisionInput = z.infer<typeof billApprovalDecisionSchema>;
 export type BillPaymentStatusInput = z.infer<typeof billPaymentStatusSchema>;

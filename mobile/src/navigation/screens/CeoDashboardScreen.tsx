@@ -7,7 +7,6 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { Screen } from '@/components/ui/Screen';
-import { useGetCeoBillStatsQuery } from '@/features/bills/api/billsApi';
 import { useGetUnreadNotificationCountQuery } from '@/features/notifications/api/notificationsApi';
 import { useGetCeoQuotationStatsQuery } from '@/features/quotations/api/quotationsApi';
 import { useAuth } from '@/hooks/useAuth';
@@ -75,39 +74,32 @@ export function CeoDashboardScreen({ navigation }: Props) {
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
   const { data: stats, isLoading, isFetching, refetch } = useGetCeoQuotationStatsQuery();
-  const { data: billStats, isLoading: isLoadingBillStats } = useGetCeoBillStatsQuery();
   const { data: unreadCount } = useGetUnreadNotificationCountQuery();
 
   const goToPendingQuotations = () => navigation.navigate('PendingQuotations', { screen: 'QuotationList' });
-  const goToPendingBillApprovals = () => navigation.navigate('PendingBillApprovals', { screen: 'BillList' });
   const goToNotifications = () => {
     let nav = navigation as unknown as { getParent?: () => unknown; navigate: (name: string) => void };
     while (nav.getParent?.()) nav = nav.getParent!() as typeof nav;
     nav.navigate('NotificationCenter');
   };
 
-  const isAnyLoading = isLoading || isLoadingBillStats;
-  const dash = (v: number | undefined): string | number => (isAnyLoading ? '—' : (v ?? 0));
+  const dash = (v: number | undefined): string | number => (isLoading ? '—' : (v ?? 0));
 
   const kpiCards = useMemo<KpiCardData[]>(() => [
     { id: 'q_pending', icon: 'hourglass', iconColor: '#f59e0b', iconBg: '#fef3c7', value: dash(stats?.pendingApprovals), label: 'Quotations Pending', subtitle: 'Awaiting CEO approval', onPress: goToPendingQuotations },
     { id: 'q_approved', icon: 'checkmark-circle', iconColor: '#43a047', iconBg: '#e8f5e9', value: dash(stats?.approvedToday), label: 'Approved Today', subtitle: 'Quotations' },
-    { id: 'b_pending', icon: 'receipt', iconColor: '#1e88e5', iconBg: '#dbeafe', value: dash(billStats?.pendingApprovals), label: 'Bills Pending', subtitle: 'Awaiting CEO approval', onPress: goToPendingBillApprovals },
-    { id: 'b_approved', icon: 'checkmark-done-circle', iconColor: '#43a047', iconBg: '#e8f5e9', value: dash(billStats?.approvedToday), label: 'Bills Approved', subtitle: 'Today' },
     { id: 'notifications', icon: 'notifications', iconColor: '#e53935', iconBg: '#fdeaea', value: unreadCount ?? 0, label: 'Unread Alerts', subtitle: 'Notifications' },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [isAnyLoading, stats, billStats, unreadCount]);
+  ], [isLoading, stats, unreadCount]);
 
-  const pendingTotal = (stats?.pendingApprovals ?? 0) + (billStats?.pendingApprovals ?? 0);
+  const pendingTotal = stats?.pendingApprovals ?? 0;
 
   const tasks = useMemo(() => [
     { label: 'Pending Quotation Approvals', count: dash(stats?.pendingApprovals), onPress: goToPendingQuotations },
     { label: 'Quotations Approved Today', count: dash(stats?.approvedToday) },
-    { label: 'Pending Bill Approvals', count: dash(billStats?.pendingApprovals), onPress: goToPendingBillApprovals },
-    { label: 'Bills Approved Today', count: dash(billStats?.approvedToday) },
     { label: 'Unread Notifications', count: unreadCount ?? 0 },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [isAnyLoading, stats, billStats, unreadCount]);
+  ], [isLoading, stats, unreadCount]);
 
   return (
     <Screen padded={false} className="bg-surface-muted dark:bg-surface-dark">
@@ -166,7 +158,6 @@ export function CeoDashboardScreen({ navigation }: Props) {
         <SectionHeader title="Quick Actions" />
         <View style={styles.qaGrid}>
           <QuickAction icon="document-text" color="#f59e0b" label="Pending Quotations" onPress={goToPendingQuotations} />
-          <QuickAction icon="receipt" color="#1e88e5" label="Pending Bills" onPress={goToPendingBillApprovals} />
           <QuickAction icon="person" color="#7c3aed" label="My Profile" onPress={() => navigation.navigate('Profile')} />
           <QuickAction icon="notifications" color="#e53935" label="Notifications" onPress={goToNotifications} />
         </View>

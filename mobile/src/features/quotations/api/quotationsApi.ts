@@ -109,6 +109,7 @@ export interface QuotationFormInput {
 }
 
 export const quotationsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getQuotations: builder.query<Quotation[], void>({
       query: () => ({ url: '/quotations', method: 'GET', params: { limit: 100 } }),

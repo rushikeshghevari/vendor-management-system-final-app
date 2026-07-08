@@ -58,12 +58,13 @@ const QUOTATION_FILTER_LABELS: Record<QuotationStatus, string> = {
 };
 
 const BILL_FILTER_OPTS: readonly BillStatus[] = [
-  'draft', 'submitted', 'approved', 'verified', 'payment_pending', 'paid', 'completed', 'rejected',
+  'draft', 'submitted', 'ai_verified', 'director_approved', 'director_rejected', 'director_correction',
+  'correction_requested', 'verified', 'rejected', 'payment_pending', 'paid', 'completed',
 ];
 
 const BILL_FILTER_LABELS: Record<string, string> = {
-  draft: 'Draft', submitted: 'In Review', negotiation: 'Negotiation',
-  resubmitted: 'Resubmitted', approved: 'CEO/Dir Approved', approval_rejected: 'Approval Rejected',
+  draft: 'Draft', submitted: 'Submitted', ai_verified: 'AI Verified',
+  director_approved: 'Dir. Approved', director_rejected: 'Dir. Rejected', director_correction: 'Dir. Correction',
   correction_requested: 'Correction', verified: 'Verified', rejected: 'Rejected',
   payment_pending: 'Pay Pending', paid: 'Paid', completed: 'Completed',
 };
@@ -294,9 +295,9 @@ export function ReportsScreen() {
 
   const bStats = useMemo((): StatItem[] => [
     { label: 'Total', value: bills.length, color: '#1e88e5' },
-    { label: 'Pending Approval', value: bills.filter((b) => ['submitted', 'negotiation', 'resubmitted'].includes(b.status)).length, color: '#f59e0b' },
-    { label: 'Approved', value: bills.filter((b) => b.status === 'approved').length, color: '#3b82f6' },
-    { label: 'Accounts Pending', value: bills.filter((b) => b.status === 'approved').length, color: '#06b6d4' },
+    { label: 'AI Verified', value: bills.filter((b) => b.status === 'ai_verified').length, color: '#f59e0b' },
+    { label: 'Dir. Approved', value: bills.filter((b) => b.status === 'director_approved').length, color: '#3b82f6' },
+    { label: 'Dir. Rejected', value: bills.filter((b) => b.status === 'director_rejected').length, color: '#ef4444' },
     { label: 'Verified', value: bills.filter((b) => b.status === 'verified').length, color: '#10b981' },
     { label: 'Payment Pending', value: bills.filter((b) => b.status === 'payment_pending').length, color: '#8b5cf6' },
     { label: 'Completed', value: bills.filter((b) => ['paid', 'completed'].includes(b.status)).length, color: '#059669' },

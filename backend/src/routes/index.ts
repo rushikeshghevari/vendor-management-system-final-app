@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import authRoutes from '@/modules/auth/auth.routes';
+import aiAuditLogRoutes from '@/modules/aiAuditLog/aiAuditLog.routes';
 import auditLogRoutes from '@/modules/auditLog/auditLog.routes';
 import billRoutes from '@/modules/bill/bill.routes';
 import departmentRoutes from '@/modules/department/department.routes';
@@ -22,6 +23,7 @@ router.use('/quotations', quotationRoutes);
 router.use('/bills', billRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
 router.use('/audit-logs', auditLogRoutes);
+router.use('/ai-audit-logs', aiAuditLogRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/settings', settingRoutes);
 router.use('/payments', paymentRoutes);

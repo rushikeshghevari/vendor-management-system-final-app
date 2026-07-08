@@ -1,6 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-import { BillsNavigator } from '@/navigation/BillsNavigator';
 import { CeoDashboardScreen } from '@/navigation/screens/CeoDashboardScreen';
 import { ComingSoonScreen } from '@/navigation/screens/ComingSoonScreen';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
@@ -26,7 +25,6 @@ function CeoTabs() {
     >
       <CeoTab.Screen name="Dashboard" component={CeoDashboardScreen} />
       <CeoTab.Screen name="PendingQuotations" component={QuotationsNavigator} options={{ title: 'Quotations' }} />
-      <CeoTab.Screen name="PendingBillApprovals" component={BillsNavigator} options={{ title: 'Bills' }} />
       <CeoTab.Screen name="Reports" component={ReportsPlaceholder} />
       <CeoTab.Screen name="Profile" component={ProfileNavigator} />
     </CeoTab.Navigator>

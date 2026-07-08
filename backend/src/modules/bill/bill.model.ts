@@ -1,6 +1,5 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
-import { ALL_ROLES, type Role } from '@/constants/roles';
 import { BILL_STATUS, type BillStatus } from '@/constants/status';
 
 export interface IBillFileVersion {
@@ -10,7 +9,7 @@ export interface IBillFileVersion {
   uploadedAt: Date;
 }
 
-/** One entry per Accounts decision — keeps every Correction Requested/Rejected remark, not just the latest. */
+/** One entry per Accounts decision — keeps the full correction/rejection history. */
 export interface IBillDecisionRecord {
   decision: BillStatus;
   remarks?: string;
@@ -18,23 +17,9 @@ export interface IBillDecisionRecord {
   decidedAt: Date;
 }
 
-export const BILL_APPROVAL_DECISIONS = ['approved', 'negotiation', 'rejected'] as const;
-export type BillApprovalDecision = (typeof BILL_APPROVAL_DECISIONS)[number];
-
-/**
- * One independent record per CEO/Director — mirrors `quotation.model.ts`'s
- * `IDirectorApproval` exactly (never overwritten by another approver's entry, "pending" is
- * never stored). `role` is a denormalized snapshot of the approver's role at decision time —
- * Quotation doesn't store this, but it's explicitly requested for Bills (useful for Reports
- * without an extra join) and is harmless to keep.
- */
-export interface IBillApproval {
-  approver: Types.ObjectId;
-  role: Role;
-  decision: BillApprovalDecision;
-  remarks?: string;
-  approvedAt: Date;
-}
+/** Director Financial Approval decisions (Approval 2 — after 3-Way AI verification). */
+export const DIRECTOR_FINANCIAL_DECISIONS = ['approved', 'rejected', 'correction_required'] as const;
+export type DirectorFinancialDecision = (typeof DIRECTOR_FINANCIAL_DECISIONS)[number];
 
 export interface IBill extends Document {
   billCode: string;
@@ -53,15 +38,12 @@ export interface IBill extends Document {
   invoiceFiles: IBillFileVersion[];
   supportingDocuments: IBillFileVersion[];
   remarks?: string;
-  // CEO/Director feedback for Negotiation/Rejection at the approval stage — kept alongside
-  // `billApprovals` the same way Quotation keeps `directorRemarks` alongside `directorApprovals`.
-  approvalRemarks?: string;
-  billApprovals: IBillApproval[];
-  billApprovedAt?: Date;
-  billRejectedAt?: Date;
-  billNegotiationAt?: Date;
-  // Latest Accounts feedback — kept alongside `decisionHistory` so existing Department User
-  // screens (which only show the latest remark) don't need to change.
+  // Director Financial Approval (Approval 2 — after 3-Way AI, before Accounts).
+  directorFinancialDecision?: DirectorFinancialDecision;
+  directorFinancialBy?: Types.ObjectId;
+  directorFinancialAt?: Date;
+  directorFinancialRemarks?: string;
+  // Accounts feedback — latest remark plus full history.
   accountsRemarks?: string;
   verifiedBy?: Types.ObjectId;
   verifiedAt?: Date;
@@ -94,24 +76,10 @@ const decisionRecordSchema = new Schema<IBillDecisionRecord>(
   { _id: false },
 );
 
-const billApprovalSchema = new Schema<IBillApproval>(
-  {
-    approver: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    role: { type: String, enum: ALL_ROLES, required: true },
-    decision: { type: String, enum: BILL_APPROVAL_DECISIONS, required: true },
-    remarks: { type: String, trim: true },
-    approvedAt: { type: Date, required: true, default: Date.now },
-  },
-  { _id: false },
-);
-
 const billSchema = new Schema<IBill>(
   {
     billCode: { type: String, required: true, trim: true, uppercase: true, unique: true },
-    // One Approved Quotation -> one Bill, enforced by uniqueness plus the quotation's own
-    // approved -> billed transition (see quotationService.transitionStatus in bill.service.ts).
     quotation: { type: Schema.Types.ObjectId, ref: 'Quotation', required: true, unique: true },
-    // Set when the Department User links this bill to an existing Purchase Order.
     purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder' },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
@@ -123,15 +91,14 @@ const billSchema = new Schema<IBill>(
     gstAmount: { type: Number, required: true, min: 0 },
     paymentTerms: { type: String, required: true, trim: true },
     dueDate: { type: Date, required: true },
-    // Never overwritten — every upload appends a new version; the last entry is the active one.
     invoiceFiles: { type: [fileVersionSchema], default: [] },
     supportingDocuments: { type: [fileVersionSchema], default: [] },
     remarks: { type: String, trim: true },
-    approvalRemarks: { type: String, trim: true },
-    billApprovals: { type: [billApprovalSchema], default: [] },
-    billApprovedAt: { type: Date },
-    billRejectedAt: { type: Date },
-    billNegotiationAt: { type: Date },
+    // Director Financial Approval (Approval 2 — after 3-Way AI, before Accounts).
+    directorFinancialDecision: { type: String, enum: DIRECTOR_FINANCIAL_DECISIONS },
+    directorFinancialBy:       { type: Schema.Types.ObjectId, ref: 'User' },
+    directorFinancialAt:       { type: Date },
+    directorFinancialRemarks:  { type: String, trim: true },
     accountsRemarks: { type: String, trim: true },
     verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     verifiedAt: { type: Date },

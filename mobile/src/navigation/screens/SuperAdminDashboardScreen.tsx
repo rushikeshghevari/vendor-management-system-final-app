@@ -22,7 +22,7 @@ import { useDrawer } from '@/navigation/context/DrawerContext';
 import type { MainTabParamList } from '@/navigation/types';
 
 const PENDING_QUOTATION_STATUSES = new Set(['submitted', 'negotiation', 'resubmitted']);
-const PENDING_BILL_STATUSES = new Set(['submitted', 'resubmitted', 'negotiation', 'approved', 'approval_rejected']);
+const PENDING_BILL_STATUSES = new Set(['submitted', 'ai_verified', 'director_approved']);
 
 const NOTIFICATION_ICON_MAP: Record<string, { icon: string; color: string; bg: string }> = {
   quotation_submitted:   { icon: 'document-text',         color: '#f59e0b', bg: '#fef3c7' },

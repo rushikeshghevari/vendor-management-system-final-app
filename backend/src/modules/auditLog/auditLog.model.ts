@@ -15,13 +15,20 @@ export interface IAuditLog extends Document {
   purchaseOrder: Types.ObjectId;
   bill: Types.ObjectId;
   quotation: Types.ObjectId;
-  // AI analysis snapshot at the time of Accounts decision
+  // 3-Way AI analysis snapshot at the time of Accounts decision
   aiRecommendation: AiRecommendation;
   aiConfidence: number;
   matchPercentage: number;
+  quotationMatch?: number;
+  purchaseOrderMatch?: number;
   risk: AiRisk;
   differenceCount: number;
   differences: IAiDifference[];
+  // Director Financial Approval snapshot (Approval 2)
+  directorFinancialDecision?: string;
+  directorFinancialBy?: Types.ObjectId;
+  directorFinancialRemarks?: string;
+  directorFinancialAt?: Date;
   // Accounts decision
   accountsDecision: AccountsAuditDecision;
   reason?: string;
@@ -48,18 +55,25 @@ const auditLogSchema = new Schema<IAuditLog>(
     purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder', required: true },
     bill:          { type: Schema.Types.ObjectId, ref: 'Bill',          required: true },
     quotation:     { type: Schema.Types.ObjectId, ref: 'Quotation',     required: true },
-    aiRecommendation: { type: String, enum: Object.values(AI_RECOMMENDATION), required: true },
-    aiConfidence:     { type: Number, required: true, min: 0, max: 100 },
-    matchPercentage:  { type: Number, required: true, min: 0, max: 100 },
-    risk:             { type: String, enum: Object.values(AI_RISK), required: true },
-    differenceCount:  { type: Number, required: true, min: 0 },
-    differences:      { type: [auditDifferenceSchema], default: [] },
-    accountsDecision: { type: String, enum: ACCOUNTS_AUDIT_DECISIONS, required: true },
-    reason:           { type: String, trim: true },
-    decidedBy:        { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    decidedByName:    { type: String, required: true },
-    decidedByRole:    { type: String, required: true },
-    decidedAt:        { type: Date, required: true, default: Date.now },
+    aiRecommendation:    { type: String, enum: Object.values(AI_RECOMMENDATION), required: true },
+    aiConfidence:        { type: Number, required: true, min: 0, max: 100 },
+    matchPercentage:     { type: Number, required: true, min: 0, max: 100 },
+    quotationMatch:      { type: Number, min: 0, max: 100 },
+    purchaseOrderMatch:  { type: Number, min: 0, max: 100 },
+    risk:                { type: String, enum: Object.values(AI_RISK), required: true },
+    differenceCount:     { type: Number, required: true, min: 0 },
+    differences:         { type: [auditDifferenceSchema], default: [] },
+    // Director Financial Approval snapshot
+    directorFinancialDecision: { type: String, trim: true },
+    directorFinancialBy:       { type: Schema.Types.ObjectId, ref: 'User' },
+    directorFinancialRemarks:  { type: String, trim: true },
+    directorFinancialAt:       { type: Date },
+    accountsDecision:  { type: String, enum: ACCOUNTS_AUDIT_DECISIONS, required: true },
+    reason:            { type: String, trim: true },
+    decidedBy:         { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    decidedByName:     { type: String, required: true },
+    decidedByRole:     { type: String, required: true },
+    decidedAt:         { type: Date, required: true, default: Date.now },
   },
   { timestamps: true },
 );

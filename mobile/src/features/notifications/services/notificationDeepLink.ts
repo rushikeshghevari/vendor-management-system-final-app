@@ -1,7 +1,7 @@
 /**
  * Centralized deep-link resolver for push notifications.
  *
- * Maps (module, notificationType, referenceId, role) → navigation params
+ * Maps (module, notificationType, referenceId) → navigation params
  * that can be passed to navigation.navigate(...).
  *
  * Only module-level routing is done here. Fine-grained screen routing
@@ -10,11 +10,24 @@
  */
 
 export interface DeepLinkTarget {
-  rootScreen: 'NotificationCenter' | 'Main';
-  /** The screen name inside the relevant stack navigator */
-  screen: string;
+  rootScreen: 'NotificationCenter' | 'Main' | 'QuotationApproval' | 'BillFinancialApproval';
+  /** The screen name inside the relevant stack navigator (unused for root-level screens) */
+  screen?: string;
   params: Record<string, string | undefined>;
 }
+
+/** Notification types that open QuotationApprovalScreen directly (bypass NotificationDetails). */
+const QUOTATION_APPROVAL_TYPES = new Set([
+  'quotation_submitted',
+  'quotation_resubmitted',
+  'review_pending',
+]);
+
+/** Notification types that open BillFinancialApprovalScreen directly (bypass NotificationDetails). */
+const BILL_FINANCIAL_APPROVAL_TYPES = new Set([
+  'bill_financial_approval_required',
+  'bill_ai_verified',
+]);
 
 export function resolveDeepLinkTarget(data: Record<string, string>): DeepLinkTarget | null {
   const { module: mod, referenceId, notificationType } = data;
@@ -23,6 +36,15 @@ export function resolveDeepLinkTarget(data: Record<string, string>): DeepLinkTar
 
   switch (mod) {
     case 'quotation':
+      // Submitted / resubmitted notifications go straight to the Approval screen so a
+      // Director or CEO can act in one tap without passing through Notification Details.
+      // All other quotation notifications (approved, rejected, etc.) go to the list.
+      if (notificationType && QUOTATION_APPROVAL_TYPES.has(notificationType)) {
+        return {
+          rootScreen: 'QuotationApproval',
+          params: { quotationId: referenceId, notificationId: data.notificationId },
+        };
+      }
       return {
         rootScreen: 'Main',
         screen: 'QuotationDetails',
@@ -30,6 +52,13 @@ export function resolveDeepLinkTarget(data: Record<string, string>): DeepLinkTar
       };
 
     case 'bill':
+      // Director Financial Approval notifications open the approval screen directly.
+      if (notificationType && BILL_FINANCIAL_APPROVAL_TYPES.has(notificationType)) {
+        return {
+          rootScreen: 'BillFinancialApproval',
+          params: { billId: referenceId, notificationId: data.notificationId },
+        };
+      }
       return {
         rootScreen: 'Main',
         screen: 'BillDetails',
@@ -61,7 +90,6 @@ export function resolveDeepLinkTarget(data: Record<string, string>): DeepLinkTar
       // System announcements / broadcasts → go to the notification list
       return {
         rootScreen: 'NotificationCenter',
-        screen: 'NotificationList',
         params: {},
       };
 

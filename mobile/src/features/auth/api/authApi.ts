@@ -6,6 +6,7 @@ import { setCredentials, loggedOut } from '@/features/auth/authSlice';
 import type { LoginRequest, LoginResponse, User } from '@/types/auth';
 
 export const authApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     login: builder.mutation<LoginResponse, LoginRequest>({
       query: (credentials) => ({
@@ -13,7 +14,7 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         data: credentials,
       }),
-      onQueryStarted: async (_arg, { queryFulfilled, dispatch }) => {
+      onQueryStarted: async (_arg, { queryFulfilled, dispatch, getState }) => {
         try {
           const { data } = await queryFulfilled;
 
@@ -32,14 +33,22 @@ export const authApi = baseApi.injectEndpoints({
             );
           }
 
+          // Read the previously authenticated user ID before overwriting credentials.
+          const prevUserId = (getState() as unknown as { auth: { user: User | null } }).auth.user?.id;
+
           // Always dispatch credentials after a successful HTTP 200, regardless of
           // whether token storage succeeded — isAuthenticated drives navigation.
           dispatch(setCredentials(data.user));
-          // Wipe any RTK Query cache left over from a previous session on this device
-          // (e.g. a Super Admin's unscoped Vendor list) — without this, a different
-          // user logging in on the same app instance could briefly see stale,
-          // wrongly-scoped cached data before the next refetch.
-          dispatch(baseApi.util.resetApiState());
+
+          // Wipe the RTK Query cache only when a *different* user logs in on this device.
+          // A different user's role-scoped data (e.g. Super Admin seeing all Vendors)
+          // must never be visible to the next user, even briefly.
+          // Same-user re-login keeps the cache warm: the dashboard then serves cached
+          // data immediately instead of firing 10+ simultaneous requests, which was the
+          // primary cause of HTTP 429 errors during development.
+          if (!prevUserId || prevUserId !== data.user.id) {
+            dispatch(baseApi.util.resetApiState());
+          }
         } catch (err) {
           // Invalid credentials / validation error — surfaced via the mutation's
           // `error` state in the component; nothing to clean up here.

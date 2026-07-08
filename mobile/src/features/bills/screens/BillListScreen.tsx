@@ -26,11 +26,11 @@ const SKELETON_PLACEHOLDERS = [1, 2, 3, 4];
 const STATUS_TAB_LABEL: Record<BillStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
-  negotiation: 'Negotiation',
-  resubmitted: 'Resubmitted',
-  approved: 'Approved',
-  approval_rejected: 'Rejected',
-  correction_requested: 'Correction Requested',
+  ai_verified: 'AI Verified',
+  director_approved: 'Dir. Approved',
+  director_rejected: 'Dir. Rejected',
+  director_correction: 'Correction',
+  correction_requested: 'Correction',
   verified: 'Verified',
   rejected: 'Rejected',
   payment_pending: 'Payment Pending',
@@ -38,34 +38,30 @@ const STATUS_TAB_LABEL: Record<BillStatus, string> = {
   completed: 'Completed',
 };
 
-// Department Users only act on these statuses day-to-day; later workflow stages
-// (Verified onward) are surfaced once Accounts/Payment modules are built.
+// Department Users see all stages of their own bills.
 const STATUS_TABS: { value: BillStatus; label: string }[] = (
-  ['draft', 'submitted', 'negotiation', 'approved', 'correction_requested', 'verified', 'paid'] satisfies BillStatus[]
+  ['draft', 'submitted', 'ai_verified', 'director_approved', 'director_correction', 'correction_requested', 'verified', 'paid'] satisfies BillStatus[]
 ).map((value) => ({ value, label: STATUS_TAB_LABEL[value] }));
 
-// Mirrors the backend's own visibility contract (`bill.service.ts` scopeToOwner) — a
-// Director/CEO is never sent a draft bill, so showing that tab would be a dead end. Approved/
-// approval_rejected are included so a Director/CEO can still find and act on (or review) a
-// bill another approver has already decided — see the Bill Approval History.
-const CEO_DIRECTOR_STATUS_TABS = (
-  ['submitted', 'negotiation', 'resubmitted', 'approved', 'approval_rejected'] satisfies BillStatus[]
+// Directors see bills awaiting Financial Approval (AI_VERIFIED) plus already-decided ones.
+const DIRECTOR_STATUS_TABS = (
+  ['ai_verified', 'director_approved', 'director_rejected', 'director_correction'] satisfies BillStatus[]
 ).map((value) => ({ value, label: STATUS_TAB_LABEL[value] }));
 
 type Props = NativeStackScreenProps<BillsStackParamList, 'BillList'>;
 
 export function BillListScreen({ navigation }: Props) {
   const { user, hasRole } = useAuth();
-  const isCeoOrDirector = hasRole(ROLES.DIRECTOR) || hasRole(ROLES.CEO);
+  const isDirector = hasRole(ROLES.DIRECTOR);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
   const searchInputRef = useRef<TextInput>(null);
 
   const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery();
 
-  const statusTabs = isCeoOrDirector ? CEO_DIRECTOR_STATUS_TABS : STATUS_TABS;
+  const statusTabs = isDirector ? DIRECTOR_STATUS_TABS : STATUS_TABS;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusTab, setStatusTab] = useState<BillStatus>(isCeoOrDirector ? 'submitted' : 'draft');
+  const [statusTab, setStatusTab] = useState<BillStatus>(isDirector ? 'ai_verified' : 'draft');
   const [page, setPage] = useState(1);
 
   const filteredBills = useMemo(() => {
@@ -139,7 +135,7 @@ export function BillListScreen({ navigation }: Props) {
             contentContainerStyle={{ paddingTop: 16, paddingBottom: 96 }}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} />}
-            ListEmptyComponent={<BillEmptyState onGoToQuotations={isCeoOrDirector ? undefined : handleGoToQuotations} />}
+            ListEmptyComponent={<BillEmptyState onGoToQuotations={isDirector ? undefined : handleGoToQuotations} />}
             ListFooterComponent={
               pagedBills.length > 0 ? <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} /> : null
             }

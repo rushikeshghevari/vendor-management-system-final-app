@@ -9,6 +9,8 @@ import { usePushNotifications } from '@/features/notifications/hooks/usePushNoti
 import { AuthNavigator } from '@/navigation/AuthNavigator';
 import { MainNavigator } from '@/navigation/MainNavigator';
 import { NotificationsNavigator } from '@/navigation/NotificationsNavigator';
+import { QuotationApprovalScreen } from '@/features/quotations/screens/QuotationApprovalScreen';
+import { BillFinancialApprovalScreen } from '@/features/bills/screens/BillFinancialApprovalScreen';
 import type { RootStackParamList } from '@/navigation/types';
 
 /** Minimum time the splash stays on screen, regardless of how fast auth bootstrap finishes. */
@@ -33,6 +35,9 @@ function AuthenticatedNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainNavigator} />
       <Stack.Screen name="NotificationCenter" component={NotificationsNavigator} />
+      {/* Root-level so notification taps can navigate here regardless of tab depth */}
+      <Stack.Screen name="QuotationApproval" component={QuotationApprovalScreen} />
+      <Stack.Screen name="BillFinancialApproval" component={BillFinancialApprovalScreen} />
     </Stack.Navigator>
   );
 }

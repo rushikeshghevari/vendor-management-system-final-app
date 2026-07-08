@@ -34,6 +34,7 @@ export interface DepartmentInput {
 }
 
 export const departmentsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getDepartments: builder.query<Department[], void>({
       query: () => ({ url: '/departments', method: 'GET', params: { limit: 100 } }),

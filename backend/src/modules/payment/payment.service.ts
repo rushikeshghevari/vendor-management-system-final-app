@@ -73,6 +73,11 @@ export const paymentService = {
 
     const bill = await Bill.findOne({ _id: input.bill, isDeleted: { $ne: true } });
     if (!bill) throw ApiError.notFound('Bill not found');
+
+    // Dual-gate: Director Financial Approval must be approved AND Accounts must have verified.
+    if (bill.directorFinancialDecision !== 'approved') {
+      throw ApiError.conflict('Payment cannot start until the Director has financially approved this bill');
+    }
     if (bill.status !== BILL_STATUS.VERIFIED) {
       throw ApiError.conflict('Only a Verified bill can enter the payment queue');
     }

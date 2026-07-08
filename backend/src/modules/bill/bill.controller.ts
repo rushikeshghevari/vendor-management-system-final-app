@@ -31,11 +31,6 @@ export const billController = {
     sendSuccess(res, stats, 'Director dashboard stats fetched');
   }),
 
-  ceoStats: catchAsync(async (req: Request, res: Response) => {
-    const stats = await billService.getCeoStats(req.user!);
-    sendSuccess(res, stats, 'CEO dashboard stats fetched');
-  }),
-
   getById: catchAsync(async (req: Request, res: Response) => {
     const bill = await billService.getById(req.params.id as string, req.user!);
     sendSuccess(res, bill, 'Bill fetched');
@@ -61,9 +56,9 @@ export const billController = {
     sendSuccess(res, bill, 'Decision recorded');
   }),
 
-  decideApproval: catchAsync(async (req: Request, res: Response) => {
-    const bill = await billService.decideApproval(req.params.id as string, req.body, req.user!);
-    sendSuccess(res, bill, 'Decision recorded');
+  decideFinancialApproval: catchAsync(async (req: Request, res: Response) => {
+    const bill = await billService.decideFinancialApproval(req.params.id as string, req.body, req.user!);
+    sendSuccess(res, bill, 'Financial approval decision recorded');
   }),
 
   updatePaymentStatus: catchAsync(async (req: Request, res: Response) => {

@@ -15,7 +15,7 @@ export const NOTIFICATION_TYPES = [
   'quotation_rejected',
   'quotation_resubmitted',
   'quotation_approved',
-  // Bill
+  // Bill — business lifecycle
   'bill_submitted',
   'bill_reviewed',
   'bill_review_pending',
@@ -24,6 +24,13 @@ export const NOTIFICATION_TYPES = [
   'bill_resubmitted',
   'bill_approved',
   'bill_verified',
+  // Bill — AI + Director Financial Approval (new 3-way workflow)
+  'bill_ai_verified',
+  'bill_financial_approval_required',
+  'bill_financial_approved',
+  'bill_financial_rejected',
+  'bill_director_correction_required',
+  'ai_high_risk_alert',
   // Payment
   'payment_pending',
   'payment_created',

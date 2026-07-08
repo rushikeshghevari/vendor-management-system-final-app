@@ -7,7 +7,7 @@ import { authorize } from '@/middleware/rbac.middleware';
 import { validate } from '@/middleware/validate.middleware';
 import { billController } from '@/modules/bill/bill.controller';
 import {
-  billApprovalDecisionSchema,
+  billFinancialDecisionSchema,
   billDecisionSchema,
   billListQuerySchema,
   billPaymentStatusSchema,
@@ -28,7 +28,6 @@ router.get('/', validate({ query: billListQuerySchema }), billController.list);
 router.get('/stats/accounts', authorize(ROLES.ACCOUNTS), billController.accountsStats);
 router.get('/stats/payment', authorize(ROLES.PAYMENT_DEPARTMENT), billController.paymentStats);
 router.get('/stats/director', authorize(ROLES.DIRECTOR), billController.directorStats);
-router.get('/stats/ceo', authorize(ROLES.CEO, ROLES.SUPER_ADMIN), billController.ceoStats);
 
 router.get('/:id', validate({ params: mongoIdParamSchema() }), billController.getById);
 
@@ -61,12 +60,12 @@ router.patch(
   billController.decide,
 );
 
-// CEO/Director approval stage — mirrors quotation.routes.ts's `/:id/decision` exactly.
+// Director Financial Approval (Approval 2 — after 3-Way AI, before Accounts).
 router.patch(
-  '/:id/approval-decision',
-  authorize(ROLES.DIRECTOR, ROLES.CEO),
-  validate({ params: mongoIdParamSchema(), body: billApprovalDecisionSchema }),
-  billController.decideApproval,
+  '/:id/financial-decision',
+  authorize(ROLES.DIRECTOR),
+  validate({ params: mongoIdParamSchema(), body: billFinancialDecisionSchema }),
+  billController.decideFinancialApproval,
 );
 
 // Payment Department-only — backend support for the future Payment module; no mobile UI yet.

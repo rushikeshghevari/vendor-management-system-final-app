@@ -99,20 +99,22 @@ export function DirectorDashboardScreen({ navigation }: Props) {
   ], [isAnyLoading, stats]);
 
   const kpiRow2 = useMemo<KpiCardData[]>(() => [
-    { id: 'b_pending', icon: 'receipt', iconColor: '#f59e0b', iconBg: '#fef3c7', value: dash(billStats?.pending), label: 'Bills Pending', subtitle: 'Awaiting review', onPress: goToPendingBillApprovals },
-    { id: 'b_resubmitted', icon: 'refresh-circle', iconColor: '#1e88e5', iconBg: '#dbeafe', value: dash(billStats?.resubmitted), label: 'Resubmitted Bills', subtitle: 'Review again', onPress: goToPendingBillApprovals },
+    { id: 'b_pending', icon: 'receipt', iconColor: '#f59e0b', iconBg: '#fef3c7', value: dash(billStats?.pendingFinancialApprovals), label: 'Financial Approvals', subtitle: 'AI-Verified Bills', onPress: goToPendingBillApprovals },
+    { id: 'b_highrisk', icon: 'alert-circle', iconColor: '#e53935', iconBg: '#fdeaea', value: dash(billStats?.highRiskBills), label: 'High Risk Bills', subtitle: 'Needs attention', onPress: goToPendingBillApprovals },
+    { id: 'b_approved', icon: 'checkmark-circle', iconColor: '#43a047', iconBg: '#e8f5e9', value: dash(billStats?.approvedToday), label: 'Approved Today', subtitle: 'Bills' },
+    { id: 'b_correction', icon: 'pencil', iconColor: '#1e88e5', iconBg: '#dbeafe', value: dash(billStats?.correctionToday), label: 'Corrections Today', subtitle: 'Bills' },
     { id: 'notifications', icon: 'notifications', iconColor: '#e53935', iconBg: '#fdeaea', value: unreadCount ?? 0, label: 'Unread Alerts', subtitle: 'Notifications' },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [isAnyLoading, billStats, unreadCount]);
 
-  const pendingTotal = (stats?.pending ?? 0) + (billStats?.pending ?? 0);
+  const pendingTotal = (stats?.pending ?? 0) + (billStats?.pendingFinancialApprovals ?? 0);
 
   const tasks = useMemo(() => [
     { label: 'Pending Quotation Reviews', count: dash(stats?.pending), onPress: goToPendingQuotations },
     { label: 'Negotiation Requests', count: dash(stats?.negotiation), onPress: goToPendingQuotations },
     { label: 'Resubmitted Quotations', count: dash(stats?.resubmitted), onPress: goToPendingQuotations },
-    { label: 'Pending Bill Approvals', count: dash(billStats?.pending), onPress: goToPendingBillApprovals },
-    { label: 'Resubmitted Bills', count: dash(billStats?.resubmitted), onPress: goToPendingBillApprovals },
+    { label: 'Pending Financial Approvals', count: dash(billStats?.pendingFinancialApprovals), onPress: goToPendingBillApprovals },
+    { label: 'High Risk Bills', count: dash(billStats?.highRiskBills), onPress: goToPendingBillApprovals },
     { label: 'Unread Notifications', count: unreadCount ?? 0 },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [isAnyLoading, stats, billStats, unreadCount]);
@@ -171,7 +173,7 @@ export function DirectorDashboardScreen({ navigation }: Props) {
           scrollEventThrottle={16}
         />
 
-        <SectionHeader title="Bill Approvals" />
+        <SectionHeader title="Bill Financial Approvals" />
         <FlatList
           data={kpiRow2}
           keyExtractor={(item) => item.id}

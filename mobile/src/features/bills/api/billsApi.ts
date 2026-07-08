@@ -1,15 +1,12 @@
 import { baseApi } from '@/store/baseApi';
 import type {
   AccountsBillStats,
-  ApprovalRoute,
   Bill,
-  BillApproval,
-  BillApprovalDecision,
   BillDecision,
   BillFileVersion,
   BillStatus,
-  CeoBillStats,
   DirectorBillStats,
+  DirectorFinancialDecision,
   PaymentBillStats,
 } from '@/features/bills/types';
 
@@ -27,15 +24,6 @@ interface RawDecisionRecord {
   remarks?: string;
   decidedBy: RawRef | string;
   decidedAt: string;
-}
-
-interface RawBillApproval {
-  approverId: string;
-  approverName: string;
-  role: string;
-  decision: BillApproval['decision'];
-  remarks?: string;
-  approvedAt: string | null;
 }
 
 interface RawBill {
@@ -59,12 +47,11 @@ interface RawBill {
   verifiedBy?: RawRef | string;
   verifiedAt?: string;
   decisionHistory?: RawDecisionRecord[];
-  approvalRemarks?: string;
-  billApprovals?: RawBillApproval[];
-  approvalRoute?: ApprovalRoute;
-  billApprovedAt?: string;
-  billRejectedAt?: string;
-  billNegotiationAt?: string;
+  // Director Financial Approval (Approval 2 — after 3-Way AI)
+  directorFinancialDecision?: DirectorFinancialDecision;
+  directorFinancialBy?: RawRef | string;
+  directorFinancialAt?: string;
+  directorFinancialRemarks?: string;
   status: BillStatus;
   createdAt: string;
   updatedAt: string;
@@ -123,15 +110,10 @@ function toBill(raw: RawBill): Bill {
       decidedByName: refName(entry.decidedBy),
       decidedAt: entry.decidedAt,
     })),
-    approvalRemarks: raw.approvalRemarks,
-    billApprovals: raw.billApprovals ?? [],
-    // submit/resubmit's raw response doesn't carry the roster/route enrichment (only
-    // list/getById/decideApproval do) — harmless placeholder, overwritten by the refetch
-    // those mutations already trigger via invalidatesTags (mirrors quotationsApi.ts).
-    approvalRoute: raw.approvalRoute ?? 'directors',
-    billApprovedAt: raw.billApprovedAt,
-    billRejectedAt: raw.billRejectedAt,
-    billNegotiationAt: raw.billNegotiationAt,
+    directorFinancialDecision: raw.directorFinancialDecision,
+    directorFinancialBy: raw.directorFinancialBy ? refId(raw.directorFinancialBy) : undefined,
+    directorFinancialAt: raw.directorFinancialAt,
+    directorFinancialRemarks: raw.directorFinancialRemarks,
     status: raw.status,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
@@ -160,6 +142,7 @@ export interface BillListFilters {
 }
 
 export const billsApi = baseApi.injectEndpoints({
+  overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
     getBills: builder.query<Bill[], BillListFilters | void>({
       query: (filters) => ({ url: '/bills', method: 'GET', params: { limit: 100, ...filters } }),
@@ -185,31 +168,20 @@ export const billsApi = baseApi.injectEndpoints({
       providesTags: [{ type: 'Bill', id: 'DIRECTOR_STATS' }],
     }),
 
-    getCeoBillStats: builder.query<CeoBillStats, void>({
-      query: () => ({ url: '/bills/stats/ceo', method: 'GET' }),
-      providesTags: [{ type: 'Bill', id: 'CEO_STATS' }],
-    }),
-
-    // CEO/Director approval stage — mirrors quotationsApi.ts's decideQuotation exactly. Each
-    // approver acts independently; this never requires every approver to act before it
-    // resolves, it just appends/updates this approver's own entry in `billApprovals`.
-    decideBillApproval: builder.mutation<Bill, { id: string; decision: BillApprovalDecision; remarks?: string }>({
-      query: ({ id, decision, remarks }) => ({ url: `/bills/${id}/approval-decision`, method: 'PATCH', data: { decision, remarks } }),
+    // Director Financial Approval (Approval 2 — after 3-Way AI, before Accounts).
+    decideFinancialApproval: builder.mutation<Bill, { id: string; decision: DirectorFinancialDecision; remarks?: string }>({
+      query: ({ id, decision, remarks }) => ({ url: `/bills/${id}/financial-decision`, method: 'PATCH', data: { decision, remarks } }),
       transformResponse: (raw: RawBill) => toBill(raw),
       invalidatesTags: (_result, _error, { id }) => [
         { type: 'Bill', id },
         { type: 'Bill', id: 'LIST' },
         { type: 'Bill', id: 'DIRECTOR_STATS' },
-        { type: 'Bill', id: 'CEO_STATS' },
         { type: 'Bill', id: 'ACCOUNTS_STATS' },
       ],
     }),
 
     // Accounts-only. A "verified" decision also notifies Payment Department and changes
-    // both the Bill-based AND the Payment-module dashboards' "Ready for Payment" counts —
-    // PaymentDashboardScreen/AccountsDashboardScreen read the Payment-module stats
-    // (`Payment`/`PAYMENT_DEPT_STATS`, `Payment`/`ACCOUNTS_STATS`), not the older Bill-based
-    // ones, so both tag families must invalidate together or those dashboards go stale.
+    // both the Bill-based AND the Payment-module dashboards' "Ready for Payment" counts.
     decideBill: builder.mutation<Bill, { id: string; decision: BillDecision; remarks?: string }>({
       query: ({ id, decision, remarks }) => ({ url: `/bills/${id}/decision`, method: 'PATCH', data: { decision, remarks } }),
       transformResponse: (raw: RawBill) => toBill(raw),
@@ -242,11 +214,6 @@ export const billsApi = baseApi.injectEndpoints({
       ],
     }),
 
-    // Submitting now notifies whichever role the amount routes to (CEO or both Directors) —
-    // both stats tags invalidate unconditionally since the route can change live (see
-    // resolveApprovalRoute) and the mobile client doesn't independently know which applies.
-    // ACCOUNTS_STATS also invalidates: resubmit-from-Correction-Requested goes straight back
-    // to Accounts (see bill.service.ts resubmit()), changing Accounts' own counts too.
     submitBill: builder.mutation<Bill, string>({
       query: (id) => ({ url: `/bills/${id}/submit`, method: 'PATCH' }),
       transformResponse: (raw: RawBill) => toBill(raw),
@@ -254,7 +221,6 @@ export const billsApi = baseApi.injectEndpoints({
         { type: 'Bill', id },
         { type: 'Bill', id: 'LIST' },
         { type: 'Bill', id: 'DIRECTOR_STATS' },
-        { type: 'Bill', id: 'CEO_STATS' },
         { type: 'Bill', id: 'ACCOUNTS_STATS' },
       ],
     }),
@@ -266,7 +232,6 @@ export const billsApi = baseApi.injectEndpoints({
         { type: 'Bill', id },
         { type: 'Bill', id: 'LIST' },
         { type: 'Bill', id: 'DIRECTOR_STATS' },
-        { type: 'Bill', id: 'CEO_STATS' },
         { type: 'Bill', id: 'ACCOUNTS_STATS' },
       ],
     }),
@@ -280,8 +245,6 @@ export const billsApi = baseApi.injectEndpoints({
       ],
     }),
 
-    // FormData flows through axiosBaseQuery's own multipart handling — still a normal
-    // RTK Query mutation, never a manual axios call outside the RTK Query cache.
     uploadBillInvoice: builder.mutation<Bill, { id: string; formData: FormData }>({
       query: ({ id, formData }) => ({ url: `/bills/${id}/invoice`, method: 'POST', data: formData }),
       transformResponse: (raw: RawBill) => toBill(raw),
@@ -307,13 +270,12 @@ export const {
   useGetAccountsBillStatsQuery,
   useGetPaymentBillStatsQuery,
   useGetDirectorBillStatsQuery,
-  useGetCeoBillStatsQuery,
   useCreateBillMutation,
   useUpdateBillMutation,
   useSubmitBillMutation,
   useResubmitBillMutation,
   useDecideBillMutation,
-  useDecideBillApprovalMutation,
+  useDecideFinancialApprovalMutation,
   useDeleteBillMutation,
   useUploadBillInvoiceMutation,
   useUploadBillSupportingDocumentMutation,
