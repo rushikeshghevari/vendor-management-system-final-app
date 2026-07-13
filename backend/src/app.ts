@@ -19,6 +19,11 @@ import routes from '@/routes';
 export function createApp(): Application {
   const app = express();
 
+  // Railway (and most PaaS) sit behind a reverse proxy; trust the first hop so
+  // req.ip resolves to the real client IP instead of the load-balancer address.
+  // Required for correct IP-based rate limiting and security headers.
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   app.use(
     cors({

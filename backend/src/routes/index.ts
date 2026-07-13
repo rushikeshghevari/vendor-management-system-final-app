@@ -1,10 +1,13 @@
 import { Router } from 'express';
 
 import authRoutes from '@/modules/auth/auth.routes';
+import activityLogRoutes from '@/modules/activityLog/activityLog.routes';
 import aiAuditLogRoutes from '@/modules/aiAuditLog/aiAuditLog.routes';
 import auditLogRoutes from '@/modules/auditLog/auditLog.routes';
 import billRoutes from '@/modules/bill/bill.routes';
 import departmentRoutes from '@/modules/department/department.routes';
+import directorRoutes from '@/modules/director/director.routes';
+import hodRoutes from '@/modules/hod/hod.routes';
 import notificationRoutes from '@/modules/notification/notification.routes';
 import paymentRoutes from '@/modules/payment/payment.routes';
 import purchaseOrderRoutes from '@/modules/purchaseOrder/purchaseOrder.routes';
@@ -17,13 +20,16 @@ const router = Router();
 
 router.use('/auth', authRoutes);
 router.use('/departments', departmentRoutes);
+router.use('/hod', hodRoutes);
 router.use('/users', userRoutes);
 router.use('/vendors', vendorRoutes);
 router.use('/quotations', quotationRoutes);
 router.use('/bills', billRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
+router.use('/director', directorRoutes);
 router.use('/audit-logs', auditLogRoutes);
 router.use('/ai-audit-logs', aiAuditLogRoutes);
+router.use('/activity-logs', activityLogRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/settings', settingRoutes);
 router.use('/payments', paymentRoutes);

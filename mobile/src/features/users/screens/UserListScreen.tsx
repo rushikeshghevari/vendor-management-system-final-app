@@ -1,10 +1,11 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View, type TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { DeleteUserSheet } from '@/components/users/DeleteUserSheet';
 import { FilterChipRow } from '@/components/users/FilterChipRow';
+import { UserBulkActionBar } from '@/components/users/UserBulkActionBar';
 import { UserCard } from '@/components/users/UserCard';
 import { UserEmptyState } from '@/components/users/UserEmptyState';
 import { UserSearch } from '@/components/users/UserSearch';
@@ -18,10 +19,12 @@ import { Screen } from '@/components/ui/Screen';
 import { ALL_ROLES, ROLES, type Role } from '@/constants/roles';
 import { ROLE_LABELS } from '@/constants/roleLabels';
 import { useGetDepartmentsQuery } from '@/features/departments/api/departmentsApi';
-import { useDeleteUserMutation, useGetUsersQuery } from '@/features/users/api/usersApi';
+import { buildUsersCsv } from '@/features/users/csv';
+import { useBulkSetUserStatusMutation, useDeleteUserMutation, useGetUsersQuery } from '@/features/users/api/usersApi';
 import type { AppUser } from '@/features/users/types';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/utils/getErrorMessage';
+import { shareCsv } from '@/utils/csvExport';
 import type { UsersStackParamList } from '@/navigation/types';
 
 const PAGE_SIZE = 5;
@@ -48,6 +51,7 @@ export function UserListScreen({ navigation, route }: Props) {
   const { data: users, isLoading } = useGetUsersQuery();
   const { data: departments } = useGetDepartmentsQuery();
   const [deleteUser] = useDeleteUserMutation();
+  const [bulkSetStatus] = useBulkSetUserStatusMutation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<Role | 'all'>(route.params?.initialRoleFilter ?? 'all');
@@ -55,6 +59,8 @@ export function UserListScreen({ navigation, route }: Props) {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [userToDelete, setUserToDelete] = useState<AppUser | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const departmentOptions = useMemo(
     () => [{ value: 'all', label: 'All Departments' }, ...(departments ?? []).map((d) => ({ value: d.id, label: d.name }))],
@@ -85,7 +91,43 @@ export function UserListScreen({ navigation, route }: Props) {
 
   const handleAddUser = () => navigation.navigate('CreateUser');
 
-  const handleCardPress = (target: AppUser) => navigation.navigate('UserDetails', { userId: target.id });
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectionMode(false);
+      return next;
+    });
+  }, []);
+
+  const handleCardPress = (target: AppUser) => {
+    if (selectionMode) {
+      toggleSelected(target.id);
+      return;
+    }
+    navigation.navigate('UserDetails', { userId: target.id });
+  };
+
+  const handleLongPress = useCallback((target: AppUser) => {
+    setSelectionMode(true);
+    toggleSelected(target.id);
+  }, [toggleSelected]);
+
+  const handleCancelSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkSetStatus = useCallback(async (isActive: boolean) => {
+    try {
+      await bulkSetStatus({ ids: Array.from(selectedIds), isActive }).unwrap();
+    } catch (error) {
+      Alert.alert('Could Not Update Users', getErrorMessage(error));
+    } finally {
+      handleCancelSelection();
+    }
+  }, [selectedIds, bulkSetStatus, handleCancelSelection]);
 
   const handleDeletePress = (target: AppUser) => {
     if (target.role === ROLES.SUPER_ADMIN) {
@@ -106,6 +148,14 @@ export function UserListScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      await shareCsv(`users-${Date.now()}.csv`, buildUsersCsv(filteredUsers));
+    } catch (error) {
+      Alert.alert('Could Not Export Users', getErrorMessage(error));
+    }
+  };
+
   return (
     <Screen padded={false}>
       <AppHeader
@@ -120,6 +170,9 @@ export function UserListScreen({ navigation, route }: Props) {
               onPress={() => searchInputRef.current?.focus()}
             >
               <Ionicons name="search-outline" size={22} color="#ffffff" />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Export users to CSV" hitSlop={8} onPress={handleExportCsv}>
+              <Ionicons name="download-outline" size={22} color="#ffffff" />
             </Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Notifications" className="relative" hitSlop={8}>
               <Ionicons name="notifications-outline" size={22} color="#ffffff" />
@@ -169,6 +222,17 @@ export function UserListScreen({ navigation, route }: Props) {
           />
         </View>
 
+        {selectionMode ? (
+          <View className="-mx-4 mt-3">
+            <UserBulkActionBar
+              count={selectedIds.size}
+              onActivate={() => handleBulkSetStatus(true)}
+              onDeactivate={() => handleBulkSetStatus(false)}
+              onCancel={handleCancelSelection}
+            />
+          </View>
+        ) : null}
+
         {isLoading ? (
           <View className="mt-4">
             {SKELETON_PLACEHOLDERS.map((key) => (
@@ -181,7 +245,15 @@ export function UserListScreen({ navigation, route }: Props) {
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 96 }}>
             <View className="mt-4">
               {pagedUsers.map((item) => (
-                <UserCard key={item.id} user={item} onPress={handleCardPress} onDelete={handleDeletePress} />
+                <UserCard
+                  key={item.id}
+                  user={item}
+                  onPress={handleCardPress}
+                  onDelete={handleDeletePress}
+                  onLongPress={handleLongPress}
+                  selected={selectedIds.has(item.id)}
+                  selectionMode={selectionMode}
+                />
               ))}
             </View>
             <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
+import { AnalyticsBar } from '@/components/dashboard/AnalyticsBar';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from '@/components/ui/NotificationBell';
@@ -98,28 +99,6 @@ const QuickAction = memo(function QuickAction({ icon, color, label, onPress }: Q
     </TouchableOpacity>
   );
 });
-
-// ── Analytics progress bar ────────────────────────────────────────────────────
-
-function AnalyticsBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.min(value / max, 1) : 0;
-  return (
-    <View style={styles.analyticsRow}>
-      <View style={styles.analyticsLabelRow}>
-        <Text style={styles.analyticsLabel}>{label}</Text>
-        <Text style={[styles.analyticsCount, { color }]}>{value}</Text>
-      </View>
-      <View style={styles.analyticsBarBg}>
-        <View
-          style={[
-            styles.analyticsBarFill,
-            { width: `${Math.round(pct * 100)}%` as `${number}%`, backgroundColor: color },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
 
 // ── Section header ────────────────────────────────────────────────────────────
 
@@ -503,12 +482,6 @@ const styles = StyleSheet.create({
 
   // Analytics card
   analyticsCard:     { backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  analyticsRow:      { marginBottom: 4 },
-  analyticsLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  analyticsLabel:    { fontSize: 12, color: '#475569', fontWeight: '500' },
-  analyticsCount:    { fontSize: 12, fontWeight: '700' },
-  analyticsBarBg:    { height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
-  analyticsBarFill:  { height: 6, borderRadius: 3 },
   analyticsDivider:  { height: 12 },
 
   // CEO status card

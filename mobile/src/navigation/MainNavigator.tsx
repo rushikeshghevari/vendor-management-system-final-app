@@ -6,6 +6,7 @@ import { DepartmentUserDashboardScreen } from '@/navigation/screens/DepartmentUs
 import { BillsNavigator } from '@/navigation/BillsNavigator';
 import { CeoNavigator } from '@/navigation/CeoNavigator';
 import { DirectorNavigator } from '@/navigation/DirectorNavigator';
+import { HodNavigator } from '@/navigation/HodNavigator';
 import { PaymentNavigator } from '@/navigation/PaymentNavigator';
 import { PaymentsNavigator } from '@/navigation/PaymentsNavigator';
 import { ProfileNavigator } from '@/navigation/ProfileNavigator';
@@ -93,6 +94,7 @@ function AccountsNavigator() {
 export function MainNavigator() {
   const { hasRole } = useAuth();
   if (hasRole(ROLES.SUPER_ADMIN))        return <SuperAdminNavigator />;
+  if (hasRole(ROLES.HOD))                return <HodNavigator />;
   if (hasRole(ROLES.ACCOUNTS))           return <AccountsNavigator />;
   if (hasRole(ROLES.DIRECTOR))           return <DirectorNavigator />;
   if (hasRole(ROLES.CEO))                return <CeoNavigator />;

@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>;
+import { PDFParse } from 'pdf-parse';
 
 export interface OcrResult {
   rawText: string;
@@ -111,7 +110,9 @@ export async function extractFromPdf(filePath: string): Promise<OcrResult> {
     : path.join(process.cwd(), filePath.replace(/^\//, ''));
 
   const buffer = fs.readFileSync(absolutePath);
-  const pdfData = await pdfParse(buffer);
+  const parser = new PDFParse({ data: buffer });
+  const pdfData = await parser.getText();
+  await parser.destroy();
   const rawText = pdfData.text;
   const extractedData = parseInvoiceText(rawText);
 

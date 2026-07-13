@@ -1,6 +1,6 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
-import { BILL_STATUS, type BillStatus } from '@/constants/status';
+import { AI_RECOMMENDATION, AI_RISK, BILL_STATUS, type AiRecommendation, type AiRisk, type BillStatus } from '@/constants/status';
 
 export interface IBillFileVersion {
   version: number;
@@ -21,6 +21,28 @@ export interface IBillDecisionRecord {
 export const DIRECTOR_FINANCIAL_DECISIONS = ['approved', 'rejected', 'correction_required'] as const;
 export type DirectorFinancialDecision = (typeof DIRECTOR_FINANCIAL_DECISIONS)[number];
 
+/** Append-only audit trail for events not already covered by `decisionHistory` (Accounts) or
+ *  the single-value `directorFinancial*` fields — created/submitted/AI runs/retries, and every
+ *  Director decision (including revisions, which the single-value fields overwrite). Powers the
+ *  Bill Timeline API (GET /bills/:id/timeline), merged there with AiAuditLog + decisionHistory. */
+export const BILL_HISTORY_EVENTS = [
+  'created', 'submitted', 'resubmitted', 'invoice_uploaded', 'supporting_document_uploaded',
+  'ai_processing_started', 'ai_verified', 'ai_failed', 'retry_ai_verification',
+  'director_decision', 'accounts_decision', 'payment_status_changed', 'updated',
+] as const;
+export type BillHistoryEvent = (typeof BILL_HISTORY_EVENTS)[number];
+
+export interface IBillHistoryEntry {
+  event: BillHistoryEvent;
+  status?: BillStatus;
+  remarks?: string;
+  actorId?: Types.ObjectId;
+  actorName?: string;
+  actorRole?: string;
+  at: Date;
+  meta?: Record<string, unknown>;
+}
+
 export interface IBill extends Document {
   billCode: string;
   quotation: Types.ObjectId;
@@ -28,6 +50,10 @@ export interface IBill extends Document {
   vendor: Types.ObjectId;
   department: Types.ObjectId;
   createdBy: Types.ObjectId;
+  // Denormalized snapshot of the uploader — mirrors the vendorName/departmentName pattern
+  // already used on PurchaseOrder, so list views never need an extra populate/lookup.
+  uploadedByName: string;
+  uploadedByRole: string;
   invoiceNumber: string;
   invoiceDate: Date;
   invoiceAmount: number;
@@ -48,6 +74,15 @@ export interface IBill extends Document {
   verifiedBy?: Types.ObjectId;
   verifiedAt?: Date;
   decisionHistory: IBillDecisionRecord[];
+  // Denormalized snapshot of PurchaseOrder.aiVerification essentials — set once AI verification
+  // completes, so list/dashboard views can show score/status without an extra PO lookup.
+  // The canonical, full aiVerification result stays on PurchaseOrder (see aiVerification.service.ts).
+  aiMatchPercentage?: number;
+  aiRisk?: AiRisk;
+  aiRecommendation?: AiRecommendation;
+  aiVerifiedAt?: Date;
+  aiFailureReason?: string;
+  history: IBillHistoryEntry[];
   status: BillStatus;
   isDeleted: boolean;
   submittedAt?: Date;
@@ -76,14 +111,33 @@ const decisionRecordSchema = new Schema<IBillDecisionRecord>(
   { _id: false },
 );
 
+const historyEntrySchema = new Schema<IBillHistoryEntry>(
+  {
+    event:     { type: String, enum: BILL_HISTORY_EVENTS, required: true },
+    status:    { type: String, enum: Object.values(BILL_STATUS) },
+    remarks:   { type: String, trim: true },
+    actorId:   { type: Schema.Types.ObjectId, ref: 'User' },
+    actorName: { type: String, trim: true },
+    actorRole: { type: String, trim: true },
+    at:        { type: Date, required: true, default: Date.now },
+    meta:      { type: Schema.Types.Mixed },
+  },
+  { _id: false },
+);
+
 const billSchema = new Schema<IBill>(
   {
     billCode: { type: String, required: true, trim: true, uppercase: true, unique: true },
-    quotation: { type: Schema.Types.ObjectId, ref: 'Quotation', required: true, unique: true },
+    // No inline `unique: true` here — see the partial index below. A plain unique index would
+    // reject a new Bill for a quotation whose only prior Bill was soft-deleted (isDeleted:
+    // true), since Mongo unique indexes count every document regardless of that flag.
+    quotation: { type: Schema.Types.ObjectId, ref: 'Quotation', required: true },
     purchaseOrder: { type: Schema.Types.ObjectId, ref: 'PurchaseOrder' },
     vendor: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    uploadedByName: { type: String, required: true, trim: true },
+    uploadedByRole: { type: String, required: true, trim: true },
     invoiceNumber: { type: String, required: true, trim: true },
     invoiceDate: { type: Date, required: true },
     invoiceAmount: { type: Number, required: true, min: 0 },
@@ -103,6 +157,12 @@ const billSchema = new Schema<IBill>(
     verifiedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     verifiedAt: { type: Date },
     decisionHistory: { type: [decisionRecordSchema], default: [] },
+    aiMatchPercentage: { type: Number, min: 0, max: 100 },
+    aiRisk:            { type: String, enum: Object.values(AI_RISK) },
+    aiRecommendation:  { type: String, enum: Object.values(AI_RECOMMENDATION) },
+    aiVerifiedAt:      { type: Date },
+    aiFailureReason:   { type: String, trim: true },
+    history: { type: [historyEntrySchema], default: [] },
     status: {
       type: String,
       enum: Object.values(BILL_STATUS),
@@ -117,8 +177,24 @@ const billSchema = new Schema<IBill>(
 
 billSchema.index({ department: 1, status: 1 });
 billSchema.index({ vendor: 1 });
+// One active Bill per Quotation — partial so a soft-deleted Draft (see billService.remove)
+// doesn't permanently block a fresh Bill being created for the same Quotation afterward.
+// MongoDB partial index filters only support a limited operator subset — $ne is NOT one of
+// them (silently fails index creation, logged but not thrown, if used); isDeleted always has
+// a schema default of false so every document has it explicitly set, hence plain equality.
+billSchema.index(
+  { quotation: 1 },
+  { unique: true, partialFilterExpression: { isDeleted: false } },
+);
 // Every Department User's list/filter query is scoped by `createdBy` (see scopeToOwner) —
 // without this, that's a full collection scan on every Department User's request.
 billSchema.index({ createdBy: 1, status: 1 });
+// DB-level backstop for the same-invoice-twice-for-one-vendor check in bill.service.ts —
+// closes the race window between the application check and the insert (partial so a
+// soft-deleted bill never blocks reusing its invoice number).
+billSchema.index(
+  { vendor: 1, invoiceNumber: 1 },
+  { unique: true, partialFilterExpression: { isDeleted: false } },
+);
 
 export const Bill = model<IBill>('Bill', billSchema);

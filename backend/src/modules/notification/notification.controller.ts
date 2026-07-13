@@ -30,6 +30,16 @@ export const notificationController = {
     sendSuccess(res, notification, 'Notification archived');
   }),
 
+  pin: catchAsync(async (req: Request, res: Response) => {
+    const notification = await notificationService.pin(req.params.id as string, req.user!);
+    sendSuccess(res, notification, 'Notification pinned');
+  }),
+
+  unpin: catchAsync(async (req: Request, res: Response) => {
+    const notification = await notificationService.unpin(req.params.id as string, req.user!);
+    sendSuccess(res, notification, 'Notification unpinned');
+  }),
+
   softDelete: catchAsync(async (req: Request, res: Response) => {
     await notificationService.softDelete(req.params.id as string, req.user!);
     sendSuccess(res, null, 'Notification deleted');

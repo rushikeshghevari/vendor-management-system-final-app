@@ -15,11 +15,11 @@ export const createUserSchema = z
     isActive: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.role === ROLES.DEPARTMENT_USER && !data.department) {
+    if ((data.role === ROLES.DEPARTMENT_USER || data.role === ROLES.HOD) && !data.department) {
       ctx.addIssue({
         code: 'custom',
         path: ['department'],
-        message: 'Department is required for department_user role',
+        message: 'Department is required for this role',
       });
     }
   });
@@ -52,6 +52,14 @@ export const userListQuerySchema = z.object({
   role: z.enum(ALL_ROLES).optional(),
   department: objectId.optional(),
   isActive: z.enum(['true', 'false']).optional(),
+  search: z.string().trim().max(200).optional(),
+  sort: z.enum(['name', 'email', 'createdAt']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
+
+export const bulkUserStatusSchema = z.object({
+  ids: z.array(objectId).min(1).max(200),
+  isActive: z.boolean(),
 });
 
 export const registerDeviceSchema = z.object({
@@ -72,3 +80,4 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type RegisterDeviceInput = z.infer<typeof registerDeviceSchema>;
 export type RemoveDeviceInput = z.infer<typeof removeDeviceSchema>;
+export type BulkUserStatusInput = z.infer<typeof bulkUserStatusSchema>;

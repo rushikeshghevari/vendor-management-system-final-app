@@ -5,6 +5,7 @@ import type {
   BillDecision,
   BillFileVersion,
   BillStatus,
+  BillTimeline,
   DirectorBillStats,
   DirectorFinancialDecision,
   PaymentBillStats,
@@ -15,6 +16,8 @@ interface RawRef {
   name?: string;
   code?: string;
   quotationCode?: string;
+  poNumber?: string;
+  grandTotal?: number;
   email?: string;
   status?: string;
 }
@@ -30,9 +33,16 @@ interface RawBill {
   _id: string;
   billCode: string;
   quotation: RawRef | string;
+  purchaseOrder?: RawRef | string;
   vendor: RawRef | string;
   department: RawRef | string;
   createdBy: RawRef | string;
+  uploadedByName?: string;
+  uploadedByRole?: string;
+  aiMatchPercentage?: number;
+  aiRisk?: 'LOW' | 'MEDIUM' | 'HIGH';
+  aiRecommendation?: 'APPROVE' | 'MANUAL_REVIEW' | 'REJECT';
+  aiVerifiedAt?: string;
   invoiceNumber: string;
   invoiceDate: string;
   invoiceAmount: number;
@@ -69,10 +79,12 @@ function refName(ref: RawRef | string | undefined): string {
 
 function toBill(raw: RawBill): Bill {
   const quotation = raw.quotation;
+  const purchaseOrder = raw.purchaseOrder;
   const vendor = raw.vendor;
   const department = raw.department;
   const createdBy = raw.createdBy;
   const isQuotationPopulated = typeof quotation === 'object' && quotation !== null;
+  const isPoPopulated = typeof purchaseOrder === 'object' && purchaseOrder !== null;
   const isVendorPopulated = typeof vendor === 'object' && vendor !== null;
   const isDeptPopulated = typeof department === 'object' && department !== null;
   const isCreatedByPopulated = typeof createdBy === 'object' && createdBy !== null;
@@ -82,6 +94,8 @@ function toBill(raw: RawBill): Bill {
     billCode: raw.billCode,
     quotationId: isQuotationPopulated ? quotation._id : quotation,
     quotationCode: isQuotationPopulated ? (quotation.quotationCode ?? '') : '',
+    purchaseOrderId: purchaseOrder ? (isPoPopulated ? purchaseOrder._id : purchaseOrder) : undefined,
+    purchaseOrderNumber: isPoPopulated ? purchaseOrder.poNumber : undefined,
     vendorId: isVendorPopulated ? vendor._id : vendor,
     vendorName: isVendorPopulated ? (vendor.name ?? '') : '',
     vendorCode: isVendorPopulated ? (vendor.code ?? '') : '',
@@ -89,6 +103,12 @@ function toBill(raw: RawBill): Bill {
     departmentName: isDeptPopulated ? (department.name ?? '') : '',
     createdById: isCreatedByPopulated ? createdBy._id : createdBy,
     createdByName: isCreatedByPopulated ? (createdBy.name ?? '') : '',
+    uploadedByName: raw.uploadedByName,
+    uploadedByRole: raw.uploadedByRole,
+    aiMatchPercentage: raw.aiMatchPercentage,
+    aiRisk: raw.aiRisk,
+    aiRecommendation: raw.aiRecommendation,
+    aiVerifiedAt: raw.aiVerifiedAt,
     invoiceNumber: raw.invoiceNumber,
     invoiceDate: raw.invoiceDate,
     invoiceAmount: raw.invoiceAmount,
@@ -151,6 +171,11 @@ export const billsApi = baseApi.injectEndpoints({
         ...(result ?? []).map((item) => ({ type: 'Bill' as const, id: item.id })),
         { type: 'Bill' as const, id: 'LIST' },
       ],
+    }),
+
+    getBillTimeline: builder.query<BillTimeline, string>({
+      query: (id) => ({ url: `/bills/${id}/timeline`, method: 'GET' }),
+      providesTags: (_result, _error, id) => [{ type: 'Bill', id: `TIMELINE-${id}` }],
     }),
 
     getAccountsBillStats: builder.query<AccountsBillStats, void>({
@@ -236,6 +261,20 @@ export const billsApi = baseApi.injectEndpoints({
       ],
     }),
 
+    // Recovery action for a Bill stuck at "submitted" because no PO was linked when AI ran —
+    // Director / Super Admin only (see backend billService.retryAiVerification).
+    retryAiVerification: builder.mutation<Bill, string>({
+      query: (id) => ({ url: `/bills/${id}/retry-ai-verification`, method: 'PATCH' }),
+      transformResponse: (raw: RawBill) => toBill(raw),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Bill', id },
+        { type: 'Bill', id: 'LIST' },
+        { type: 'Bill', id: `REVIEW-${id}` },
+        { type: 'Bill', id: `TIMELINE-${id}` },
+        { type: 'Bill', id: 'DIRECTOR_STATS' },
+      ],
+    }),
+
     deleteBill: builder.mutation<void, string>({
       query: (id) => ({ url: `/bills/${id}`, method: 'DELETE' }),
       invalidatesTags: (_result, _error, id) => [
@@ -267,6 +306,7 @@ export const billsApi = baseApi.injectEndpoints({
 
 export const {
   useGetBillsQuery,
+  useGetBillTimelineQuery,
   useGetAccountsBillStatsQuery,
   useGetPaymentBillStatsQuery,
   useGetDirectorBillStatsQuery,
@@ -274,6 +314,7 @@ export const {
   useUpdateBillMutation,
   useSubmitBillMutation,
   useResubmitBillMutation,
+  useRetryAiVerificationMutation,
   useDecideBillMutation,
   useDecideFinancialApprovalMutation,
   useDeleteBillMutation,

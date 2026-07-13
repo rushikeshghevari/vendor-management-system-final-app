@@ -5,14 +5,24 @@ import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ChipSelect } from '@/components/departments/ChipSelect';
+import { FilterChipRow } from '@/components/users/FilterChipRow';
+import { FormPasswordField } from '@/components/auth/FormPasswordField';
 import { Button } from '@/components/ui/Button';
 import { FormTextField } from '@/components/ui/FormTextField';
+import { ROLES } from '@/constants/roles';
 import { generateDepartmentCode } from '@/features/departments/generateDepartmentCode';
 import { departmentSchema, type DepartmentFormValues } from '@/features/departments/departmentSchema';
+import { useGetUsersQuery } from '@/features/users/api/usersApi';
 
 const STATUS_OPTIONS = [
   { value: 'active' as const, label: 'Active' },
   { value: 'inactive' as const, label: 'Inactive' },
+];
+
+const HOD_ASSIGNMENT_OPTIONS = [
+  { value: 'none' as const, label: 'No HOD yet' },
+  { value: 'create' as const, label: 'Create New HOD' },
+  { value: 'assign' as const, label: 'Assign Existing HOD' },
 ];
 
 interface DepartmentFormProps {
@@ -43,11 +53,16 @@ export function DepartmentForm({
       description: '',
       departmentHead: '',
       status: 'active',
+      hodAssignmentMode: 'none',
       ...defaultValues,
     },
   });
 
   const nameValue = watch('name');
+  const hodAssignmentMode = watch('hodAssignmentMode');
+
+  const { data: users } = useGetUsersQuery(undefined, { skip: mode !== 'add' });
+  const availableHods = (users ?? []).filter((item) => item.role === ROLES.HOD);
 
   // Add mode: the code is always derived from the name as the user types, and stays read-only.
   useEffect(() => {
@@ -108,6 +123,55 @@ export function DepartmentForm({
         placeholder="e.g. Rohit Bansal"
         autoCapitalize="words"
       />
+
+      {mode === 'add' ? (
+        <>
+          <Controller
+            control={control}
+            name="hodAssignmentMode"
+            render={({ field: { value, onChange } }) => (
+              <ChipSelect label="HOD" value={value} options={HOD_ASSIGNMENT_OPTIONS} onChange={onChange} />
+            )}
+          />
+
+          {hodAssignmentMode === 'create' ? (
+            <>
+              <FormTextField control={control} name="newHodName" label="HOD Full Name" placeholder="Enter full name" autoCapitalize="words" />
+              <FormTextField
+                control={control}
+                name="newHodEmail"
+                label="HOD Email"
+                placeholder="Enter email address"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <FormTextField control={control} name="newHodPhone" label="HOD Mobile (optional)" placeholder="Enter mobile number" keyboardType="phone-pad" />
+              <FormPasswordField control={control} name="newHodPassword" label="HOD Password" />
+            </>
+          ) : null}
+
+          {hodAssignmentMode === 'assign' ? (
+            <Controller
+              control={control}
+              name="existingHodId"
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <View className="mb-4">
+                  <Text className="mb-1.5 text-sm font-medium text-ink dark:text-slate-200">Select HOD</Text>
+                  <FilterChipRow
+                    value={value ?? ''}
+                    options={availableHods.map((item) => ({ value: item.id, label: item.name }))}
+                    onChange={onChange}
+                  />
+                  {error ? <Text className="mt-1 text-sm text-red-600 dark:text-red-400">{error.message}</Text> : null}
+                  {availableHods.length === 0 ? (
+                    <Text className="mt-1 text-xs text-ink-muted dark:text-slate-400">No unassigned HOD accounts found.</Text>
+                  ) : null}
+                </View>
+              )}
+            />
+          ) : null}
+        </>
+      ) : null}
 
       <Controller
         control={control}

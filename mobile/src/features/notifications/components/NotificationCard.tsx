@@ -1,170 +1,155 @@
-import { Pressable, Text, View, TouchableOpacity } from 'react-native';
+import { memo, useRef } from 'react';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 
-import type { Notification, NotificationCategory, NotificationType } from '@/features/notifications/types';
+import { CATEGORY_COLOR, PRIORITY_COLOR, TYPE_ICON, type Notification } from '@/features/notifications/types';
+import { formatTimeAgo } from '@/features/notifications/utils/notificationHelpers';
 
 interface Props {
   notification: Notification;
+  selected?: boolean;
+  selectionMode?: boolean;
   onPress: (n: Notification) => void;
-  onArchive?: (id: string) => void;
-  onDelete?: (id: string) => void;
+  onLongPress?: (n: Notification) => void;
+  onMarkRead: (id: string) => void;
+  onDelete: (id: string) => void;
+  onOpen: (n: Notification) => void;
+  onTogglePin: (n: Notification) => void;
 }
 
-const TYPE_ICON: Record<NotificationType, keyof typeof Ionicons.glyphMap> = {
-  quotation_submitted:       'document-text-outline',
-  quotation_reviewed:        'checkmark-circle-outline',
-  review_pending:            'hourglass-outline',
-  quotation_negotiation:     'swap-horizontal-outline',
-  quotation_rejected:        'close-circle-outline',
-  quotation_resubmitted:     'refresh-outline',
-  quotation_approved:        'checkmark-done-outline',
-  bill_submitted:            'receipt-outline',
-  bill_reviewed:             'shield-checkmark-outline',
-  bill_review_pending:       'hourglass-outline',
-  bill_negotiation:          'swap-horizontal-outline',
-  bill_rejected:             'close-circle-outline',
-  bill_resubmitted:          'refresh-outline',
-  bill_approved:             'checkmark-done-outline',
-  bill_verified:             'shield-checkmark-outline',
-  payment_pending:           'time-outline',
-  payment_created:           'cash-outline',
-  payment_processing:        'sync-outline',
-  payment_paid:              'cash-outline',
-  payment_completed:         'checkmark-done-circle-outline',
-  payment_failed:            'alert-circle-outline',
-  po_generated:              'clipboard-outline',
-  po_bill_uploaded:          'cloud-upload-outline',
-  po_ai_verified:            'sparkles-outline',
-  po_accounts_verified:      'checkmark-circle-outline',
-  po_closed:                 'lock-closed-outline',
-  vendor_created:            'business-outline',
-  vendor_updated:            'create-outline',
-  vendor_inactive:           'pause-circle-outline',
-  ai_verification_started:   'sparkles-outline',
-  ai_verification_completed: 'sparkles-outline',
-  system_announcement:       'megaphone-outline',
-  broadcast:                 'radio-outline',
-  escalation:                'warning-outline',
-  reminder:                  'alarm-outline',
-};
+/** Fixed row height (matches the card's padding/content) so SectionList can use getItemLayout. */
+export const NOTIFICATION_CARD_HEIGHT = 104;
 
-const CATEGORY_COLOR: Record<NotificationCategory, string> = {
-  information: '#2563EB',
-  success:     '#16A34A',
-  warning:     '#D97706',
-  error:       '#DC2626',
-};
-
-const PRIORITY_BADGE: Record<string, { label: string; bg: string; text: string }> = {
-  critical: { label: 'Critical', bg: '#FEF2F2', text: '#DC2626' },
-  high:     { label: 'High',     bg: '#FFF7ED', text: '#D97706' },
-  medium:   { label: 'Medium',   bg: '#EFF6FF', text: '#2563EB' },
-  low:      { label: 'Low',      bg: '#F0FDF4', text: '#16A34A' },
-};
-
-function formatTimeAgo(isoDate: string): string {
-  const diffMs   = Date.now() - new Date(isoDate).getTime();
-  const minutes  = Math.floor(diffMs / 60000);
-  if (minutes < 1)  return 'Just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24)   return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-export function NotificationCard({ notification: n, onPress, onArchive, onDelete }: Props) {
-  const iconColor = CATEGORY_COLOR[n.category] ?? '#2563EB';
-  const priorityBadge = PRIORITY_BADGE[n.priority];
-  const isUnread = !n.isRead;
-
+function SwipeAction({ icon, label, color, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string; onPress: () => void }) {
   return (
     <Pressable
-      onPress={() => onPress(n)}
-      style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="w-20 items-center justify-center"
+      style={{ backgroundColor: color }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          gap: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: '#F3F4F6',
-          paddingHorizontal: 16,
-          paddingVertical: 14,
-          backgroundColor: isUnread ? '#EFF6FF' : '#FFFFFF',
-        }}
-      >
-        {/* Icon circle */}
-        <View
-          style={{
-            width: 42,
-            height: 42,
-            borderRadius: 21,
-            backgroundColor: `${iconColor}18`,
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Ionicons name={TYPE_ICON[n.notificationType] ?? 'notifications-outline'} size={20} color={iconColor} />
-        </View>
-
-        {/* Content */}
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: isUnread ? '700' : '600',
-                color: '#111827',
-                flex: 1,
-              }}
-              numberOfLines={1}
-            >
-              {n.title}
-            </Text>
-            {isUnread && (
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#2563EB', marginTop: 4 }} />
-            )}
-          </View>
-
-          <Text style={{ fontSize: 13, color: '#6B7280', marginTop: 2 }} numberOfLines={2}>
-            {n.message}
-          </Text>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}>
-            <Text style={{ fontSize: 11, color: '#9CA3AF' }}>{formatTimeAgo(n.createdAt)}</Text>
-
-            {priorityBadge && n.priority !== 'medium' && (
-              <View
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 4,
-                  backgroundColor: priorityBadge.bg,
-                }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: '600', color: priorityBadge.text }}>
-                  {priorityBadge.label}
-                </Text>
-              </View>
-            )}
-
-            <View style={{ flex: 1 }} />
-
-            {onArchive && (
-              <TouchableOpacity onPress={() => onArchive(n.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="archive-outline" size={16} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-            {onDelete && (
-              <TouchableOpacity onPress={() => onDelete(n.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="trash-outline" size={16} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </View>
+      <Ionicons name={icon} size={20} color="#fff" />
+      <Text className="mt-1 text-[10px] font-semibold text-white">{label}</Text>
     </Pressable>
   );
 }
+
+function NotificationCardBase({
+  notification: n,
+  selected = false,
+  selectionMode = false,
+  onPress,
+  onLongPress,
+  onMarkRead,
+  onDelete,
+  onOpen,
+  onTogglePin,
+}: Props) {
+  const swipeableRef = useRef<Swipeable>(null);
+  const iconColor = CATEGORY_COLOR[n.category] ?? '#2563EB';
+  const priorityColor = PRIORITY_COLOR[n.priority];
+  const isUnread = !n.isRead;
+
+  const close = () => swipeableRef.current?.close();
+
+  const renderLeftActions = (progress: Animated.AnimatedInterpolation<number>) => {
+    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-40, 0] });
+    return (
+      <Animated.View style={{ flexDirection: 'row', transform: [{ translateX }] }}>
+        <SwipeAction icon="checkmark-done-outline" label="Read" color="#16A34A" onPress={() => { onMarkRead(n.id); close(); }} />
+        <SwipeAction icon="trash-outline" label="Delete" color="#DC2626" onPress={() => { onDelete(n.id); close(); }} />
+      </Animated.View>
+    );
+  };
+
+  const renderRightActions = (progress: Animated.AnimatedInterpolation<number>) => {
+    const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [40, 0] });
+    return (
+      <Animated.View style={{ flexDirection: 'row', transform: [{ translateX }] }}>
+        <SwipeAction icon="open-outline" label="Open" color="#2563EB" onPress={() => { onOpen(n); close(); }} />
+        <SwipeAction icon={n.isPinned ? 'bookmark' : 'bookmark-outline'} label={n.isPinned ? 'Unpin' : 'Pin'} color="#D97706" onPress={() => { onTogglePin(n); close(); }} />
+      </Animated.View>
+    );
+  };
+
+  return (
+    <Swipeable ref={swipeableRef} renderLeftActions={renderLeftActions} renderRightActions={renderRightActions} overshootLeft={false} overshootRight={false}>
+      <Pressable
+        onPress={() => onPress(n)}
+        onLongPress={() => onLongPress?.(n)}
+        accessibilityRole="button"
+        accessibilityLabel={n.title}
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.85 : 1,
+          height: NOTIFICATION_CARD_HEIGHT,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.04,
+          shadowRadius: 3,
+          elevation: 1,
+        })}
+        className={`mx-4 my-1.5 flex-row gap-3 rounded-2xl border p-3.5 shadow-sm ${
+          selected
+            ? 'border-primary-400 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/30'
+            : isUnread
+            ? 'border-primary-100 bg-primary-50/60 dark:border-primary-900/50 dark:bg-primary-950/30'
+            : 'border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900'
+        }`}
+      >
+        {selectionMode ? (
+          <View className="items-center justify-center">
+            <Ionicons
+              name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+              size={22}
+              color={selected ? '#2563EB' : '#CBD5E1'}
+            />
+          </View>
+        ) : (
+          <View
+            className="h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+            style={{ backgroundColor: `${iconColor}18` }}
+          >
+            <Ionicons name={TYPE_ICON[n.notificationType] ?? 'notifications-outline'} size={20} color={iconColor} />
+          </View>
+        )}
+
+        <View className="flex-1 justify-center">
+          <View className="flex-row items-start justify-between gap-2">
+            <Text
+              numberOfLines={1}
+              className={`flex-1 text-sm ${isUnread ? 'font-bold text-ink dark:text-white' : 'font-semibold text-ink dark:text-slate-100'}`}
+            >
+              {n.title}
+            </Text>
+            {n.isPinned ? <Ionicons name="bookmark" size={13} color="#D97706" /> : null}
+            {isUnread ? <View className="mt-1 h-2 w-2 rounded-full bg-primary-600" /> : null}
+          </View>
+
+          <Text numberOfLines={2} className="mt-0.5 text-xs leading-4 text-ink-muted dark:text-slate-400">
+            {n.message}
+          </Text>
+
+          <View className="mt-1.5 flex-row items-center gap-2">
+            <Text className="text-[11px] text-ink-muted dark:text-slate-500">{formatTimeAgo(n.createdAt)}</Text>
+            {n.priority !== 'medium' ? (
+              <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: priorityColor.bg }}>
+                <Text className="text-[10px] font-semibold" style={{ color: priorityColor.text }}>
+                  {n.priority.charAt(0).toUpperCase() + n.priority.slice(1)}
+                </Text>
+              </View>
+            ) : null}
+            {isUnread ? (
+              <View className="rounded bg-primary-100 px-1.5 py-0.5 dark:bg-primary-900/40">
+                <Text className="text-[10px] font-semibold text-primary-700 dark:text-primary-300">Unread</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+    </Swipeable>
+  );
+}
+
+export const NotificationCard = memo(NotificationCardBase);

@@ -10,6 +10,7 @@ import { User } from '@/modules/user/user.model';
 import { sendPushToTokens } from '@/services/push/pushNotification.service';
 import type { Actor } from '@/types/actor';
 import { ApiError } from '@/utils/ApiError';
+import { escapeRegex } from '@/utils/escapeRegex';
 import { buildPaginationMeta, parsePagination } from '@/utils/pagination';
 import type mongoose from 'mongoose';
 
@@ -139,7 +140,16 @@ export const notificationService = {
     if (query.module) filter.module = query.module;
     if (query.isRead !== undefined) filter.isRead = query.isRead === 'true';
     if (query.isArchived !== undefined) filter.isArchived = query.isArchived === 'true';
+    if (query.isPinned !== undefined) filter.isPinned = query.isPinned === 'true';
     if (query.priority) filter.priority = query.priority;
+    if (query.since) filter.createdAt = { $gte: new Date(query.since as string) };
+    if (query.search) {
+      const search = String(query.search).trim();
+      if (search) {
+        const regex = new RegExp(escapeRegex(search), 'i');
+        filter.$or = [{ title: regex }, { message: regex }];
+      }
+    }
 
     const [items, total] = await Promise.all([
       Notification.find(filter)
@@ -182,6 +192,26 @@ export const notificationService = {
     const notification = await Notification.findOneAndUpdate(
       { _id: id, receiver: actor.id },
       { isArchived: true },
+      { new: true },
+    );
+    if (!notification) throw ApiError.notFound('Notification not found');
+    return notification;
+  },
+
+  async pin(id: string, actor: Actor) {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, receiver: actor.id },
+      { isPinned: true },
+      { new: true },
+    );
+    if (!notification) throw ApiError.notFound('Notification not found');
+    return notification;
+  },
+
+  async unpin(id: string, actor: Actor) {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, receiver: actor.id },
+      { isPinned: false },
       { new: true },
     );
     if (!notification) throw ApiError.notFound('Notification not found');

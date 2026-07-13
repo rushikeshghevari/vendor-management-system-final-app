@@ -31,3 +31,25 @@ jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
   MediaTypeOptions: { Images: 'Images' },
 }));
+
+// @gorhom/bottom-sheet (used by NotificationDetailsSheet) pulls in react-native-reanimated,
+// whose native module (via the separate react-native-worklets package on this version) throws
+// at import time outside a real native runtime — Jest never runs one, and the classic
+// `react-native-reanimated/mock` doesn't fully cover this split reanimated/worklets setup.
+// Mocking bottom-sheet itself at the module boundary sidesteps that entirely; no test here
+// exercises the sheet's real gesture/animation behavior, only that screens render around it.
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const passthrough = ({ children = null }: { children?: React.ReactNode }) => children;
+  const BottomSheetModal = React.forwardRef((props: { children?: React.ReactNode }, ref: unknown) => {
+    React.useImperativeHandle(ref, () => ({ present: jest.fn(), dismiss: jest.fn(), close: jest.fn(), expand: jest.fn(), collapse: jest.fn(), snapToIndex: jest.fn() }));
+    return props.children ?? null;
+  });
+  return {
+    __esModule: true,
+    BottomSheetModal,
+    BottomSheetView: passthrough,
+    BottomSheetBackdrop: () => null,
+    BottomSheetModalProvider: passthrough,
+  };
+});

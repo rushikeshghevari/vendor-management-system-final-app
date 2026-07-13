@@ -20,6 +20,7 @@ interface RawNotification {
   category: NotificationCategory;
   isRead: boolean;
   isArchived: boolean;
+  isPinned: boolean;
   isDeleted: boolean;
   createdAt: string;
   clickedAt?: string;
@@ -37,6 +38,7 @@ function toNotification(raw: RawNotification): Notification {
     category:       raw.category ?? 'information',
     isRead:         raw.isRead,
     isArchived:     raw.isArchived ?? false,
+    isPinned:       raw.isPinned ?? false,
     isDeleted:      raw.isDeleted ?? false,
     createdAt:      raw.createdAt,
     clickedAt:      raw.clickedAt,
@@ -49,7 +51,10 @@ export interface NotificationListQuery {
   module?: NotificationModule;
   isRead?: boolean;
   isArchived?: boolean;
+  isPinned?: boolean;
   priority?: NotificationPriority;
+  search?: string;
+  since?: string;
 }
 
 interface BroadcastInput {
@@ -62,9 +67,25 @@ interface BroadcastInput {
 export const notificationsApi = baseApi.injectEndpoints({
   overrideExisting: process.env.NODE_ENV !== 'production',
   endpoints: (builder) => ({
+    // Infinite-scroll pagination: the cache key deliberately excludes `page` (via
+    // serializeQueryArgs) so every page for the same filter set accumulates into one
+    // cached list instead of each page overwriting the last. Screens drive this by calling
+    // the query again with an incremented `page` once the previous page has loaded.
     getNotifications: builder.query<Notification[], NotificationListQuery | void>({
-      query: (params) => ({ url: '/notifications', method: 'GET', params: { limit: 50, ...params } }),
+      query: (params) => ({ url: '/notifications', method: 'GET', params: { limit: 20, ...params } }),
       transformResponse: (raw: RawNotification[]) => raw.map(toNotification),
+      serializeQueryArgs: ({ queryArgs }) => {
+        const { page: _page, ...filters } = queryArgs ?? {};
+        return filters;
+      },
+      merge: (cache, newItems, { arg }) => {
+        if (!arg || !arg.page || arg.page <= 1) {
+          cache.splice(0, cache.length, ...newItems);
+          return;
+        }
+        cache.push(...newItems);
+      },
+      forceRefetch: ({ currentArg, previousArg }) => currentArg?.page !== previousArg?.page,
       providesTags: (result) => [
         ...(result ?? []).map((item) => ({ type: 'Notification' as const, id: item.id })),
         { type: 'Notification' as const, id: 'LIST' },
@@ -101,6 +122,22 @@ export const notificationsApi = baseApi.injectEndpoints({
 
     archiveNotification: builder.mutation<void, string>({
       query: (id) => ({ url: `/notifications/${id}/archive`, method: 'PATCH' }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Notification', id },
+        { type: 'Notification', id: 'LIST' },
+      ],
+    }),
+
+    pinNotification: builder.mutation<void, string>({
+      query: (id) => ({ url: `/notifications/${id}/pin`, method: 'PATCH' }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'Notification', id },
+        { type: 'Notification', id: 'LIST' },
+      ],
+    }),
+
+    unpinNotification: builder.mutation<void, string>({
+      query: (id) => ({ url: `/notifications/${id}/unpin`, method: 'PATCH' }),
       invalidatesTags: (_result, _error, id) => [
         { type: 'Notification', id },
         { type: 'Notification', id: 'LIST' },
@@ -169,6 +206,8 @@ export const {
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,
   useArchiveNotificationMutation,
+  usePinNotificationMutation,
+  useUnpinNotificationMutation,
   useDeleteNotificationMutation,
   useDeleteAllNotificationsMutation,
   useBroadcastNotificationMutation,

@@ -33,7 +33,11 @@ type Props = NativeStackScreenProps<AccountsBillsStackParamList, 'AccountsBillLi
 
 export function AccountsBillListScreen({ navigation, route }: Props) {
   const searchInputRef = useRef<TextInput>(null);
-  const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery();
+  // Accounts must see a bill the moment a Director approves it, without reopening the screen
+  // (matches the same pattern already used for the Director's own bill list).
+  const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery(undefined, {
+    pollingInterval: 15000,
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusTab, setStatusTab] = useState<BillStatus>(route.params?.initialStatus ?? 'director_approved');

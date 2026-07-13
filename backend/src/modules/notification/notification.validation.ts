@@ -9,7 +9,10 @@ export const notificationListQuerySchema = paginationQuerySchema.extend({
   module:     z.string().optional(),
   isRead:     z.enum(['true', 'false']).optional(),
   isArchived: z.enum(['true', 'false']).optional(),
+  isPinned:   z.enum(['true', 'false']).optional(),
   priority:   z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  search:     z.string().trim().max(200).optional(),
+  since:      z.string().datetime().optional(),
 });
 
 export const broadcastSchema = z.object({

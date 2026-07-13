@@ -10,9 +10,12 @@ interface UserCardProps {
   user: AppUser;
   onPress?: (user: AppUser) => void;
   onDelete?: (user: AppUser) => void;
+  onLongPress?: (user: AppUser) => void;
+  selected?: boolean;
+  selectionMode?: boolean;
 }
 
-export function UserCard({ user, onPress, onDelete }: UserCardProps) {
+export function UserCard({ user, onPress, onDelete, onLongPress, selected = false, selectionMode = false }: UserCardProps) {
   const initials = user.name.charAt(0).toUpperCase();
 
   return (
@@ -20,13 +23,28 @@ export function UserCard({ user, onPress, onDelete }: UserCardProps) {
       accessibilityRole="button"
       accessibilityLabel={user.name}
       onPress={() => onPress?.(user)}
+      onLongPress={() => onLongPress?.(user)}
       android_ripple={{ color: '#e2e8f0' }}
       style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.98 : 1 }] })}
-      className="mb-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none"
+      className={`mb-3 rounded-2xl border p-4 shadow-sm shadow-slate-200 dark:shadow-none ${
+        selected
+          ? 'border-primary-400 bg-primary-50 dark:border-primary-500 dark:bg-primary-900/30'
+          : 'border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-900'
+      }`}
     >
       <View className="flex-row items-start justify-between">
         <View className="flex-1 flex-row items-start gap-3 pr-2">
-          <Avatar initials={initials} size={44} />
+          {selectionMode ? (
+            <View className="h-11 w-11 items-center justify-center">
+              <Ionicons
+                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={selected ? '#2563EB' : '#CBD5E1'}
+              />
+            </View>
+          ) : (
+            <Avatar initials={initials} size={44} />
+          )}
           <View className="flex-1">
             <Text className="text-base font-bold text-ink dark:text-white">{user.name}</Text>
             <Text className="mt-0.5 text-xs text-ink-muted dark:text-slate-400" numberOfLines={1}>

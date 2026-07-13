@@ -1,6 +1,7 @@
 # start-ngrok.ps1
-# Starts an ngrok HTTPS tunnel for the local backend (port 5000) and
-# auto-patches mobile/.env with the live public URL.
+# Starts an ngrok HTTPS tunnel for the local backend (port read from
+# backend/.env PORT, default 5000) and auto-patches mobile/.env with the
+# live public URL.
 #
 # Usage (from repo root):
 #   .\scripts\start-ngrok.ps1
@@ -12,8 +13,15 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = Split-Path $PSScriptRoot -Parent
-$envFile  = Join-Path $repoRoot 'mobile\.env'
+$repoRoot   = Split-Path $PSScriptRoot -Parent
+$envFile    = Join-Path $repoRoot 'mobile\.env'
+$backendEnv = Join-Path $repoRoot 'backend\.env'
+
+$backendPort = 5000
+if (Test-Path $backendEnv) {
+    $match = Select-String -Path $backendEnv -Pattern '^PORT=(\d+)' | Select-Object -First 1
+    if ($match) { $backendPort = $match.Matches[0].Groups[1].Value }
+}
 
 # --- resolve actual ngrok binary (handles npm shim wrappers) -----------------
 #
@@ -76,11 +84,11 @@ if ($existing) {
 # --- start ngrok -------------------------------------------------------------
 
 Write-Host ''
-Write-Host '  Starting ngrok tunnel  :5000 -> HTTPS' -ForegroundColor Cyan
+Write-Host "  Starting ngrok tunnel  :$backendPort -> HTTPS" -ForegroundColor Cyan
 Write-Host "  Binary: $ngrokExe" -ForegroundColor DarkGray
 
 $proc = Start-Process -FilePath $ngrokExe `
-    -ArgumentList 'http', '5000' `
+    -ArgumentList 'http', "$backendPort" `
     -WindowStyle Hidden -PassThru
 
 # --- wait for URL ------------------------------------------------------------

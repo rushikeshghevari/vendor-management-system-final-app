@@ -21,7 +21,12 @@ export const createQuotationSchema = z.object({
   remarks: z.string().trim().max(1000).optional(),
 });
 
-export const updateQuotationSchema = createQuotationSchema.partial();
+// `vendor` is deliberately omitted — create() validates the caller owns/can-see that vendor
+// (ownership + department + active-status checks); update() has no equivalent re-validation,
+// so allowing a client to repoint an existing quotation at an arbitrary vendor id would bypass
+// those checks entirely. Reassigning the vendor means creating a new quotation, not editing one
+// (mirrors the same omission on Bill — see bill.validation.ts's updateBillSchema).
+export const updateQuotationSchema = createQuotationSchema.omit({ vendor: true }).partial();
 
 export const decisionSchema = z
   .object({

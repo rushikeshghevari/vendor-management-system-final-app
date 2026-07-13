@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 
 import { authApi } from '@/features/auth/api/authApi';
 import { loggedOut, sessionRestored } from '@/features/auth/authSlice';
@@ -24,8 +25,12 @@ export function useAuthBootstrap(): void {
         const user = await dispatch(authApi.endpoints.getProfile.initiate()).unwrap();
         dispatch(sessionRestored(user));
       } catch {
+        // A stored token existed but couldn't be restored — the silent refresh in
+        // apiClient.ts already tried and failed (expired/revoked refresh token), so this
+        // is a genuine "your session ended" case, not a first-launch/never-logged-in one.
         await secureStorage.clearTokens();
         dispatch(sessionRestored(null));
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
       }
     })();
   }, [dispatch]);
@@ -38,6 +43,7 @@ export function useAuthBootstrap(): void {
         // session just as definitively, and must not leave the previous user's
         // cached (and possibly unscoped) data sitting around for whoever logs in next.
         dispatch(baseApi.util.resetApiState());
+        Alert.alert('Session Expired', 'Your session has expired. Please log in again.');
       }),
     [dispatch],
   );

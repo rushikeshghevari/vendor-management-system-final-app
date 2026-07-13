@@ -1,4 +1,4 @@
-import { ROLES } from '@/constants/roles';
+import { ROLES, type Role } from '@/constants/roles';
 import { Department } from '@/modules/department/department.model';
 import { Vendor } from '@/modules/vendor/vendor.model';
 import type { CreateVendorInput, UpdateVendorInput } from '@/modules/vendor/vendor.validation';
@@ -8,14 +8,20 @@ import { escapeRegex } from '@/utils/escapeRegex';
 import { buildPaginationMeta, parsePagination } from '@/utils/pagination';
 import { nextSequence, seedSequenceFromExisting } from '@/utils/sequence.model';
 
+/** Department User and HOD may both create/manage vendor records. */
+const VENDOR_WRITE_ROLES: Role[] = [ROLES.DEPARTMENT_USER, ROLES.HOD];
+
 /**
- * Vendor visibility is per-creator, not per-department: a Department User sees and
- * manages only the vendors they personally registered — not every vendor in their
- * department. Super Admin (and any other role) is left unscoped.
+ * Vendor visibility is per-creator for a Department User — they see and manage only the
+ * vendors they personally registered, not every vendor in their department. An HOD, by
+ * contrast, oversees the whole department and sees every vendor in it regardless of who
+ * registered it. Super Admin (and any other role) is left unscoped.
  */
 function scopeToOwner(actor: Actor, filter: Record<string, unknown>) {
   if (actor.role === ROLES.DEPARTMENT_USER) {
     filter.createdBy = actor.id;
+  } else if (actor.role === ROLES.HOD) {
+    filter.department = actor.department;
   }
 }
 
@@ -49,8 +55,8 @@ async function generateVendorCode(departmentId: string): Promise<string> {
 
 export const vendorService = {
   async create(input: CreateVendorInput, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER || !actor.department) {
-      throw ApiError.forbidden('Only a Department User can register a vendor');
+    if (!VENDOR_WRITE_ROLES.includes(actor.role) || !actor.department) {
+      throw ApiError.forbidden('Only a Department User or HOD can register a vendor');
     }
 
     const code = await generateVendorCode(actor.department);
@@ -109,8 +115,8 @@ export const vendorService = {
   },
 
   async update(id: string, input: UpdateVendorInput, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER) {
-      throw ApiError.forbidden('Only a Department User can update a vendor');
+    if (!VENDOR_WRITE_ROLES.includes(actor.role)) {
+      throw ApiError.forbidden('Only a Department User or HOD can update a vendor');
     }
 
     const filter: Record<string, unknown> = { _id: id };
@@ -128,8 +134,8 @@ export const vendorService = {
   },
 
   async setStatus(id: string, status: string, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER) {
-      throw ApiError.forbidden('Only a Department User can change a vendor status');
+    if (!VENDOR_WRITE_ROLES.includes(actor.role)) {
+      throw ApiError.forbidden('Only a Department User or HOD can change a vendor status');
     }
 
     const filter: Record<string, unknown> = { _id: id };
@@ -142,8 +148,8 @@ export const vendorService = {
 
   /** Soft delete — status becomes "inactive"; the record is never removed. */
   async remove(id: string, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER) {
-      throw ApiError.forbidden('Only a Department User can delete a vendor');
+    if (!VENDOR_WRITE_ROLES.includes(actor.role)) {
+      throw ApiError.forbidden('Only a Department User or HOD can delete a vendor');
     }
 
     const filter: Record<string, unknown> = { _id: id };

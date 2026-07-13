@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacit
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
+import { AnalyticsBar } from '@/components/dashboard/AnalyticsBar';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from '@/components/ui/NotificationBell';
@@ -188,6 +189,46 @@ export function DirectorDashboardScreen({ navigation }: Props) {
           scrollEventThrottle={16}
         />
 
+        <SectionHeader title="Analytics" />
+        <View style={styles.listCard}>
+          <View style={styles.analyticsCard}>
+            <Text style={styles.analyticsGroupLabel}>Quotations Decided Today</Text>
+            <AnalyticsBar
+              label="Approved"
+              value={stats?.approvedToday ?? 0}
+              max={Math.max((stats?.approvedToday ?? 0) + (stats?.rejectedToday ?? 0), 1)}
+              color="#43a047"
+            />
+            <AnalyticsBar
+              label="Rejected"
+              value={stats?.rejectedToday ?? 0}
+              max={Math.max((stats?.approvedToday ?? 0) + (stats?.rejectedToday ?? 0), 1)}
+              color="#e53935"
+            />
+          </View>
+          <View style={[styles.analyticsCard, styles.analyticsDivider]}>
+            <Text style={styles.analyticsGroupLabel}>Bill Financial Decisions Today</Text>
+            <AnalyticsBar
+              label="Approved"
+              value={billStats?.approvedToday ?? 0}
+              max={Math.max((billStats?.approvedToday ?? 0) + (billStats?.rejectedToday ?? 0) + (billStats?.correctionToday ?? 0), 1)}
+              color="#43a047"
+            />
+            <AnalyticsBar
+              label="Rejected"
+              value={billStats?.rejectedToday ?? 0}
+              max={Math.max((billStats?.approvedToday ?? 0) + (billStats?.rejectedToday ?? 0) + (billStats?.correctionToday ?? 0), 1)}
+              color="#e53935"
+            />
+            <AnalyticsBar
+              label="Sent Back for Correction"
+              value={billStats?.correctionToday ?? 0}
+              max={Math.max((billStats?.approvedToday ?? 0) + (billStats?.rejectedToday ?? 0) + (billStats?.correctionToday ?? 0), 1)}
+              color="#f59e0b"
+            />
+          </View>
+        </View>
+
         <SectionHeader title="Quick Actions" />
         <View style={styles.qaGrid}>
           <QuickAction icon="document-text" color="#f59e0b" label="Pending Quotations" onPress={goToPendingQuotations} />
@@ -251,6 +292,9 @@ const styles = StyleSheet.create({
   qaLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: '#334155', lineHeight: 16 },
 
   listCard: { backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, marginBottom: 8 },
+  analyticsCard: { padding: 14 },
+  analyticsGroupLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  analyticsDivider: { borderTopWidth: 1, borderTopColor: '#f1f5f9' },
   taskRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
   taskRowBorder: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   taskLabel: { flex: 1, fontSize: 13, color: '#1e293b', fontWeight: '500' },

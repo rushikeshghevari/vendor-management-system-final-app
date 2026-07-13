@@ -6,6 +6,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Badge } from '@/components/ui/Badge';
+import { BillHistoryList } from '@/components/bills/BillHistoryList';
+import { BillProgressStepper } from '@/components/bills/BillProgressStepper';
 import { Button } from '@/components/ui/Button';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -16,9 +18,12 @@ import { env } from '@/config/env';
 import {
   useDeleteBillMutation,
   useGetBillsQuery,
+  useGetBillTimelineQuery,
   useResubmitBillMutation,
+  useRetryAiVerificationMutation,
   useSubmitBillMutation,
 } from '@/features/bills/api/billsApi';
+import { useGetPurchaseOrderByQuotationQuery } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import type { BillStatus } from '@/features/bills/types';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/utils/getErrorMessage';
@@ -29,6 +34,7 @@ type Props = NativeStackScreenProps<BillsStackParamList, 'BillDetails'>;
 const STATUS_LABEL: Record<BillStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
+  ai_failed: 'AI Failed',
   ai_verified: 'AI Verified',
   director_approved: 'Director Approved',
   director_rejected: 'Director Rejected',
@@ -44,6 +50,7 @@ const STATUS_LABEL: Record<BillStatus, string> = {
 const STATUS_VARIANT: Record<BillStatus, 'primary' | 'success' | 'danger' | 'neutral'> = {
   draft: 'neutral',
   submitted: 'primary',
+  ai_failed: 'danger',
   ai_verified: 'primary',
   director_approved: 'success',
   director_rejected: 'danger',
@@ -83,12 +90,22 @@ export function BillDetailsScreen({ navigation, route }: Props) {
   const isSuperAdmin = hasRole(ROLES.SUPER_ADMIN);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const isDirectorOrSuperAdmin = isDirector || isSuperAdmin;
+
   const { data: bills, isLoading } = useGetBillsQuery();
   const [submitBill, { isLoading: isSubmitting }] = useSubmitBillMutation();
   const [resubmitBill, { isLoading: isResubmitting }] = useResubmitBillMutation();
   const [deleteBill] = useDeleteBillMutation();
+  const [retryAiVerification, { isLoading: isRetryingAi }] = useRetryAiVerificationMutation();
 
   const bill = bills?.find((item) => item.id === billId);
+
+  // PO balance is shown regardless of role once a PO is linked — remaining balance is
+  // computed client-side as grandTotal - thisBill's own amount (only one bill per PO today).
+  const { data: linkedPo } = useGetPurchaseOrderByQuotationQuery(bill?.quotationId ?? '', {
+    skip: !bill?.quotationId,
+  });
+  const { data: timeline } = useGetBillTimelineQuery(billId, { skip: !billId });
 
   if (isLoading) {
     return (
@@ -150,12 +167,44 @@ export function BillDetailsScreen({ navigation, route }: Props) {
 
   // Director can open the financial approval screen directly from bill details.
   const canDirectorAct = isDirector && bill.status === 'ai_verified';
+  const remainingPoBalance = linkedPo ? linkedPo.grandTotal - bill.invoiceAmount : null;
+
+  const handleRetryAi = async () => {
+    try {
+      await retryAiVerification(bill.id).unwrap();
+    } catch (error) {
+      Alert.alert('Could Not Retry AI Verification', getErrorMessage(error));
+    }
+  };
 
   return (
     <Screen padded={false}>
       <AppHeader title="Bill Details" leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
 
       <ScrollView className="flex-1 bg-surface-muted px-4 pt-4 dark:bg-surface-dark" contentContainerStyle={{ paddingBottom: 32 }}>
+
+        {/* Workflow progress indicator */}
+        <DashboardCard className="mb-4">
+          <BillProgressStepper status={bill.status} />
+        </DashboardCard>
+
+        {/* AI Failed — Director/Super Admin recovery action */}
+        {bill.status === 'ai_failed' ? (
+          <View className="mb-4 rounded-xl bg-red-50 p-4 dark:bg-red-900/20">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="alert-circle" size={18} color="#DC2626" />
+              <Text className="flex-1 text-sm font-semibold text-red-700 dark:text-red-400">
+                AI Verification Failed
+              </Text>
+            </View>
+            <Text className="mt-1.5 text-xs text-red-600 dark:text-red-400">
+              The AI pipeline could not complete for this bill.{isDirectorOrSuperAdmin ? ' Retry once the issue is resolved.' : ' A Director or Super Admin will retry it.'}
+            </Text>
+            {isDirectorOrSuperAdmin ? (
+              <Button label="Retry AI Verification" loading={isRetryingAi} onPress={handleRetryAi} className="mt-3" />
+            ) : null}
+          </View>
+        ) : null}
 
         {/* Director Financial Approval CTA — only when bill is AI-Verified and awaiting decision */}
         {canDirectorAct ? (
@@ -224,6 +273,12 @@ export function BillDetailsScreen({ navigation, route }: Props) {
 
           <View className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
             <InfoRow icon="document-text-outline" label="Quotation" value={bill.quotationCode} />
+            {bill.purchaseOrderNumber ? (
+              <InfoRow icon="cart-outline" label="Purchase Order" value={bill.purchaseOrderNumber} />
+            ) : null}
+            {linkedPo ? (
+              <InfoRow icon="wallet-outline" label="Remaining PO Balance" value={`₹ ${(remainingPoBalance ?? 0).toLocaleString('en-IN')} of ₹ ${linkedPo.grandTotal.toLocaleString('en-IN')}`} />
+            ) : null}
             <InfoRow icon="business-outline" label="Department" value={bill.departmentName} />
             <InfoRow icon="pricetag-outline" label="Invoice Number" value={bill.invoiceNumber} />
             <InfoRow icon="calendar-outline" label="Invoice Date" value={formatDate(bill.invoiceDate)} />
@@ -378,6 +433,14 @@ export function BillDetailsScreen({ navigation, route }: Props) {
             <Text className="mt-1.5 text-sm text-red-700 dark:text-red-400">This bill was rejected by Accounts.</Text>
           </View>
         ) : null}
+
+        {/* Bill History — every status change, AI run, approval, remark, actor, and timestamp */}
+        <DashboardCard className="mt-4">
+          <Text className="text-sm font-semibold text-ink dark:text-slate-200">Bill History</Text>
+          <View className="mt-2">
+            <BillHistoryList events={timeline?.events ?? []} />
+          </View>
+        </DashboardCard>
       </ScrollView>
     </Screen>
   );

@@ -53,6 +53,9 @@ export const BILL_STATUS = {
   DRAFT: 'draft',
   // Department User submitted — AI verification pipeline running in background.
   SUBMITTED: 'submitted',
+  // AI pipeline threw (or found no linked PO) — never silently stays at SUBMITTED forever.
+  // Director / Super Admin can retry via PATCH /bills/:id/retry-ai-verification.
+  AI_FAILED: 'ai_failed',
   // 3-Way AI (Quotation + PO + Bill) complete — waiting for Director Financial Approval.
   AI_VERIFIED: 'ai_verified',
   // Director approved the bill financially — goes to Accounts for verification.

@@ -22,10 +22,11 @@ import {
   useGetQuotationsQuery,
   useSubmitQuotationMutation,
 } from '@/features/quotations/api/quotationsApi';
+import { useGetPurchaseOrderByQuotationQuery } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import type { DirectorDecision, QuotationStatus } from '@/features/quotations/types';
 import { useAuth } from '@/hooks/useAuth';
 import { getErrorMessage } from '@/utils/getErrorMessage';
-import type { DepartmentUserTabParamList, QuotationsStackParamList } from '@/navigation/types';
+import type { DepartmentUserTabParamList, DirectorTabParamList, PurchaseOrderStackParamList, QuotationsStackParamList } from '@/navigation/types';
 
 // Mirrors the backend's `DECIDABLE_STATUSES` in quotation.service.ts — a Director can weigh
 // in any time before the quotation is Billed, even after another Director has already acted.
@@ -87,6 +88,12 @@ export function QuotationDetailsScreen({ navigation, route }: Props) {
   const [submitQuotation, { isLoading: isSubmitting }] = useSubmitQuotationMutation();
   const [deleteQuotation] = useDeleteQuotationMutation();
   const [decideQuotation, { isLoading: isDeciding }] = useDecideQuotationMutation();
+  // A Bill can only be created once a Purchase Order exists for this Quotation (see
+  // billService.create — it now requires one). Checked unconditionally (hook-order rule);
+  // the result is only relevant once the quotation is loaded and Approved.
+  const { data: linkedPo, isLoading: isLoadingPo } = useGetPurchaseOrderByQuotationQuery(quotationId, {
+    skip: !quotationId,
+  });
 
   const quotation = quotations?.find((item) => item.id === quotationId);
 
@@ -351,16 +358,63 @@ export function QuotationDetailsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {isDepartmentUser && quotation.status === 'approved' ? (
-          <Button
-            label="Create Bill"
-            onPress={() =>
-              navigation
-                .getParent<BottomTabNavigationProp<DepartmentUserTabParamList>>()
-                ?.navigate('Bills', { screen: 'CreateBill', params: { quotationId: quotation.id } })
-            }
-            className="mt-5"
-          />
+        {isDepartmentUser && quotation.status === 'approved' && !isLoadingPo ? (
+          linkedPo ? (
+            <Button
+              label="Create Bill"
+              onPress={() =>
+                navigation
+                  .getParent<BottomTabNavigationProp<DepartmentUserTabParamList>>()
+                  ?.navigate('Bills', { screen: 'CreateBill', params: { quotationId: quotation.id } })
+              }
+              className="mt-5"
+            />
+          ) : (
+            <View className="mt-5 rounded-xl bg-amber-50 p-4 dark:bg-amber-900/20">
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="alert-circle-outline" size={18} color="#d97706" />
+                <Text className="flex-1 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                  Purchase Order required
+                </Text>
+              </View>
+              <Text className="mt-1.5 text-xs text-amber-700 dark:text-amber-500">
+                A Purchase Order must be generated for this Quotation before a Bill can be created.
+              </Text>
+              <Button
+                label="Generate Purchase Order"
+                onPress={() =>
+                  navigation
+                    .getParent<BottomTabNavigationProp<DepartmentUserTabParamList>>()
+                    ?.navigate('PurchaseOrders', { screen: 'CreatePurchaseOrder', params: { quotationId: quotation.id } })
+                }
+                className="mt-3"
+              />
+            </View>
+          )
+        ) : null}
+
+        {isDirector && (quotation.status === 'approved' || quotation.status === 'billed') && !isLoadingPo && linkedPo ? (
+          <View className="mt-5 rounded-xl bg-emerald-50 p-4 dark:bg-emerald-900/20">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="clipboard-outline" size={18} color="#059669" />
+              <Text className="flex-1 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                Purchase Order Generated
+              </Text>
+            </View>
+            <Text className="mt-1.5 text-xs text-emerald-700 dark:text-emerald-500">
+              {linkedPo.poNumber} · ₹{linkedPo.grandTotal.toLocaleString()} · {linkedPo.status.replace(/_/g, ' ')}
+            </Text>
+            <Button
+              label="View Purchase Order"
+              variant="secondary"
+              onPress={() =>
+                navigation
+                  .getParent<BottomTabNavigationProp<DirectorTabParamList>>()
+                  ?.navigate('PurchaseOrders', { screen: 'PurchaseOrderDetails', params: { purchaseOrderId: linkedPo.id } })
+              }
+              className="mt-3"
+            />
+          </View>
         ) : null}
 
         {quotation.status === 'billed' ? (

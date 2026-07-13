@@ -100,6 +100,11 @@ export const usersApi = baseApi.injectEndpoints({
       ],
     }),
 
+    bulkSetUserStatus: builder.mutation<{ updated: number }, { ids: string[]; isActive: boolean }>({
+      query: (body) => ({ url: '/users/bulk-status', method: 'PATCH', data: body }),
+      invalidatesTags: [{ type: 'Users', id: 'LIST' }],
+    }),
+
     resetUserPassword: builder.mutation<void, { id: string; newPassword: string }>({
       query: ({ id, newPassword }) => ({ url: `/users/${id}/reset-password`, method: 'PATCH', data: { newPassword } }),
     }),
@@ -116,6 +121,7 @@ export const {
   useUpdateUserMutation,
   useSetUserStatusMutation,
   useDeleteUserMutation,
+  useBulkSetUserStatusMutation,
   useResetUserPasswordMutation,
   useChangeOwnPasswordMutation,
 } = usersApi;

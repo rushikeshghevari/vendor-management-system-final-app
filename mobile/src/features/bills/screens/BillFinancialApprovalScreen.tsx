@@ -1,26 +1,24 @@
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { AppHeader } from '@/components/layout/AppHeader';
+import { Badge } from '@/components/ui/Badge';
+import { DashboardCard } from '@/components/dashboard/DashboardCard';
+import { ComparisonTable } from '@/components/director/ComparisonTable';
+import { DifferencesPanel } from '@/components/director/DifferencesPanel';
+import { FinancialDecisionSheet } from '@/components/director/FinancialDecisionSheet';
+import { ReviewTimeline } from '@/components/director/ReviewTimeline';
+import { ScoreGauge, recommendationBandCopy } from '@/components/director/ScoreGauge';
 import { Loader } from '@/components/ui/Loader';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { Screen } from '@/components/ui/Screen';
-import { useGetBillsQuery, useDecideFinancialApprovalMutation } from '@/features/bills/api/billsApi';
-import { useGetPurchaseOrderByQuotationQuery } from '@/features/purchaseOrders/api/purchaseOrdersApi';
-import { useGetQuotationsQuery } from '@/features/quotations/api/quotationsApi';
+import { env } from '@/config/env';
+import { useDecideFinancialApprovalMutation } from '@/features/bills/api/billsApi';
 import type { DirectorFinancialDecision } from '@/features/bills/types';
+import { useGetBillReviewQuery } from '@/features/director/api/directorApi';
+import { useTriggerAiVerificationMutation } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import { getErrorMessage } from '@/utils/getErrorMessage';
 import type { RootStackParamList } from '@/navigation/types';
 
@@ -28,151 +26,104 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BillFinancialApproval'>
 
 const RISK_COLOR = { LOW: '#059669', MEDIUM: '#D97706', HIGH: '#DC2626' } as const;
 const RISK_BG = { LOW: '#ECFDF5', MEDIUM: '#FFFBEB', HIGH: '#FEF2F2' } as const;
-const RISK_ICON: Record<string, 'shield-checkmark' | 'warning' | 'alert-circle'> = {
-  LOW: 'shield-checkmark',
-  MEDIUM: 'warning',
-  HIGH: 'alert-circle',
-};
-
-const REC_COLOR = { APPROVE: '#059669', MANUAL_REVIEW: '#D97706', REJECT: '#DC2626' } as const;
 const REC_LABEL = { APPROVE: 'Approve', MANUAL_REVIEW: 'Manual Review', REJECT: 'Reject' } as const;
-const SEV_COLOR = { HIGH: '#DC2626', MEDIUM: '#D97706', LOW: '#059669' } as const;
+const REC_COLOR = { APPROVE: '#059669', MANUAL_REVIEW: '#D97706', REJECT: '#DC2626' } as const;
 
-function formatINR(amount: number): string {
+function formatINR(amount?: number | null): string {
+  if (amount == null) return '—';
   return `₹ ${amount.toLocaleString('en-IN')}`;
 }
 
-function formatDate(iso?: string): string {
+function formatDate(iso?: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function ScoreColumn({ value, label }: { value?: number; label: string }) {
-  if (value == null) return null;
-  const color = value >= 85 ? '#059669' : value >= 65 ? '#D97706' : '#DC2626';
+function refName(ref: { name?: string } | string | null | undefined): string {
+  if (!ref || typeof ref === 'string') return '—';
+  return ref.name ?? '—';
+}
+
+function fileUrl(url: string): string {
+  return `${env.apiUrl.replace('/api/v1', '')}${url}`;
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <View style={styles.scoreCol}>
-      <Text style={[styles.scoreValue, { color }]}>{value}%</Text>
-      <Text style={styles.scoreLabel}>{label}</Text>
+    <View className="flex-row items-start justify-between gap-4 border-t border-slate-100 py-2.5 dark:border-slate-800">
+      <Text className="text-sm text-ink-muted dark:text-slate-400">{label}</Text>
+      <Text className="max-w-[58%] text-right text-sm font-medium text-ink dark:text-slate-200">{value}</Text>
     </View>
   );
 }
 
-function AmountColumn({ label, value, color }: { label: string; value: string; color?: string }) {
+function PdfLink({ label, url, current }: { label: string; url: string; current?: boolean }) {
   return (
-    <View style={styles.amountCol}>
-      <Text style={styles.amountLabel}>{label}</Text>
-      <Text style={[styles.amountValue, color ? { color } : null]}>{value}</Text>
-    </View>
+    <Pressable
+      accessibilityRole="link"
+      className="mt-2 flex-row items-center gap-2"
+      onPress={() => Linking.openURL(fileUrl(url))}
+    >
+      <Ionicons name="document-attach-outline" size={15} color="#1e88e5" />
+      <Text className="flex-1 text-sm font-medium text-primary-600 underline" numberOfLines={1}>
+        {label}{current ? '  ✓ current' : ''}
+      </Text>
+    </Pressable>
   );
 }
 
-interface RemarksModalProps {
-  visible: boolean;
-  decision: DirectorFinancialDecision | null;
-  onConfirm: (remarks: string) => void;
-  onCancel: () => void;
-  isLoading: boolean;
-}
-
-function RemarksModal({ visible, decision, onConfirm, onCancel, isLoading }: RemarksModalProps) {
-  const [text, setText] = useState('');
-
-  const decisionLabel =
-    decision === 'rejected' ? 'Reject' : decision === 'correction_required' ? 'Request Correction' : '';
-  const decisionColor = decision === 'rejected' ? '#DC2626' : '#D97706';
-
+function SectionTitle({ icon, title }: { icon: keyof typeof Ionicons.glyphMap; title: string }) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <Text style={[styles.modalTitle, { color: decisionColor }]}>{decisionLabel} — Remarks Required</Text>
-          <Text style={styles.modalSubtitle}>
-            Please provide a clear reason so the Department User can take corrective action.
-          </Text>
-          <TextInput
-            style={styles.remarksInput}
-            multiline
-            placeholder="Enter remarks (mandatory)..."
-            value={text}
-            onChangeText={setText}
-            maxLength={2000}
-            autoFocus
-          />
-          <Text style={styles.charCount}>{text.length}/2000</Text>
-          <View style={styles.modalButtons}>
-            <Pressable style={styles.cancelBtn} onPress={onCancel}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.confirmBtn, { backgroundColor: decisionColor }, (!text.trim() || isLoading) && styles.btnDisabled]}
-              onPress={() => { if (text.trim()) onConfirm(text.trim()); }}
-              disabled={!text.trim() || isLoading}
-            >
-              {isLoading
-                ? <ActivityIndicator size="small" color="#ffffff" />
-                : <Text style={styles.confirmBtnText}>Confirm {decisionLabel}</Text>}
-            </Pressable>
-          </View>
-        </View>
-      </View>
-    </Modal>
+    <View className="mb-3 flex-row items-center gap-2">
+      <Ionicons name={icon} size={16} color="#1e88e5" />
+      <Text className="text-sm font-semibold text-ink dark:text-slate-200">{title}</Text>
+    </View>
   );
 }
 
 export function BillFinancialApprovalScreen({ navigation, route }: Props) {
   const { billId } = route.params;
   const [pendingDecision, setPendingDecision] = useState<DirectorFinancialDecision | null>(null);
-  const [remarksModalVisible, setRemarksModalVisible] = useState(false);
 
-  const { data: bills, isLoading: billsLoading } = useGetBillsQuery();
-  const bill = bills?.find((b) => b.id === billId);
-
-  const { data: quotations } = useGetQuotationsQuery(undefined, { skip: !bill?.quotationId });
-  const quotation = quotations?.find((q) => q.id === bill?.quotationId);
-
-  const { data: po } = useGetPurchaseOrderByQuotationQuery(bill?.quotationId ?? '', {
-    skip: !bill?.quotationId,
-  });
-
+  const { data: review, isLoading, isFetching, refetch } = useGetBillReviewQuery(billId);
   const [decideFinancialApproval, { isLoading: isDeciding }] = useDecideFinancialApprovalMutation();
+  const [triggerAiVerification, { isLoading: isTriggeringAi }] = useTriggerAiVerificationMutation();
 
-  const ai = po?.aiVerification;
-  const alreadyDecided = Boolean(bill?.directorFinancialDecision && bill.directorFinancialDecision !== undefined);
+  const handleRunAiVerification = async () => {
+    if (!review?.purchaseOrder) return;
+    try {
+      await triggerAiVerification(review.purchaseOrder.id).unwrap();
+      refetch();
+    } catch (err) {
+      Alert.alert('Could Not Run AI Verification', getErrorMessage(err));
+    }
+  };
 
   const handleApprove = async () => {
-    if (!bill) return;
     try {
-      await decideFinancialApproval({ id: bill.id, decision: 'approved' }).unwrap();
+      await decideFinancialApproval({ id: billId, decision: 'approved' }).unwrap();
       setTimeout(() => navigation.goBack(), 400);
     } catch (err) {
       Alert.alert('Could Not Approve', getErrorMessage(err));
     }
   };
 
-  const handleNonApproveConfirm = async (remarks: string) => {
-    if (!bill || !pendingDecision) return;
+  const handleConfirm = async (remarks?: string) => {
+    if (!pendingDecision) return;
     try {
-      await decideFinancialApproval({ id: bill.id, decision: pendingDecision, remarks }).unwrap();
-      setRemarksModalVisible(false);
+      await decideFinancialApproval({ id: billId, decision: pendingDecision, remarks }).unwrap();
       setPendingDecision(null);
       setTimeout(() => navigation.goBack(), 400);
     } catch (err) {
-      setRemarksModalVisible(false);
       Alert.alert('Could Not Record Decision', getErrorMessage(err));
     }
   };
 
-  const openRemarksFor = (decision: DirectorFinancialDecision) => {
-    setPendingDecision(decision);
-    setRemarksModalVisible(true);
-  };
-
-  if (billsLoading) {
+  if (isLoading) {
     return (
       <Screen padded={false}>
         <AppHeader
-          title="Financial Approval"
+          title="Financial Review"
           leftIcon="arrow-back"
           onLeftPress={() => navigation.goBack()}
           rightSlot={<NotificationBell />}
@@ -182,371 +133,323 @@ export function BillFinancialApprovalScreen({ navigation, route }: Props) {
     );
   }
 
-  if (!bill) {
+  if (!review) {
     return (
       <Screen padded={false}>
-        <AppHeader
-          title="Financial Approval"
-          leftIcon="arrow-back"
-          onLeftPress={() => navigation.goBack()}
-        />
-        <View style={styles.empty}>
+        <AppHeader title="Financial Review" leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
+        <View className="flex-1 items-center justify-center p-8">
           <Ionicons name="document-text-outline" size={48} color="#94a3b8" />
-          <Text style={styles.emptyTitle}>Bill not found</Text>
-          <Text style={styles.emptySubtitle}>It may have been deleted or the link is invalid.</Text>
+          <Text className="mt-3 text-center text-base font-medium text-ink-muted dark:text-slate-400">
+            Bill not found.
+          </Text>
         </View>
       </Screen>
     );
   }
 
-  const risk = (ai?.risk ?? 'MEDIUM') as keyof typeof RISK_COLOR;
-  const rec = (ai?.recommendation ?? 'MANUAL_REVIEW') as keyof typeof REC_COLOR;
-  const canDecide = bill.status === 'ai_verified';
+  const { bill, quotation, purchaseOrder, aiVerification, comparisonTable, differencesBySeverity, timeline } = review;
+  const alreadyDecided = Boolean(bill.directorFinancialDecision);
+  const bandCopy = recommendationBandCopy(review.recommendationBand);
+  const risk = (aiVerification.risk ?? 'MEDIUM') as keyof typeof RISK_COLOR;
+  const rec = (aiVerification.recommendation ?? 'MANUAL_REVIEW') as keyof typeof REC_COLOR;
+  const latestInvoice = bill.invoiceFiles[bill.invoiceFiles.length - 1];
+  const latestQuotationPdf = quotation?.pdfFiles[quotation.pdfFiles.length - 1];
 
   return (
     <Screen padded={false}>
       <AppHeader
-        title="Financial Approval"
+        title="Financial Review"
         leftIcon="arrow-back"
         onLeftPress={() => navigation.goBack()}
         rightSlot={<NotificationBell />}
       />
 
-      {/* ── Fixed header card ── */}
-      <View style={styles.headerCard}>
-        {/* Three amounts */}
-        <View style={styles.amountsRow}>
-          <AmountColumn label="Bill Amount" value={formatINR(bill.invoiceAmount)} color="#1E40AF" />
-          <View style={styles.amountDivider} />
-          <AmountColumn label="PO Amount" value={po ? formatINR(po.grandTotal) : '—'} />
-          <View style={styles.amountDivider} />
-          <AmountColumn
-            label="Quotation Amount"
-            value={quotation ? formatINR(Math.round(quotation.amount * (1 + quotation.gst / 100))) : '—'}
+      <ScrollView
+        className="flex-1 bg-surface-muted dark:bg-surface-dark"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── AI Recommendation banner ── */}
+        <View
+          className="mb-4 flex-row items-center gap-3 rounded-2xl px-4 py-3"
+          style={{ backgroundColor: bandCopy.bg }}
+        >
+          <Ionicons
+            name={review.recommendationBand === 'red' ? 'alert-circle' : review.recommendationBand === 'warning' ? 'warning' : 'checkmark-circle'}
+            size={20}
+            color={bandCopy.color}
           />
+          <Text className="flex-1 text-sm font-semibold" style={{ color: bandCopy.color }}>
+            {bandCopy.label}
+          </Text>
         </View>
 
-        {/* AI summary row */}
-        {ai ? (
-          <View style={styles.aiSummaryRow}>
-            <View style={styles.overallScore}>
-              <Text style={styles.overallScoreValue}>{ai.matchPercentage}%</Text>
-              <Text style={styles.overallScoreLabel}>Overall Match</Text>
-            </View>
-            <View style={styles.aiSummaryRight}>
-              <View style={[styles.riskBadge, { backgroundColor: RISK_BG[risk] }]}>
-                <Ionicons name={RISK_ICON[risk]} size={12} color={RISK_COLOR[risk]} />
-                <Text style={[styles.riskBadgeText, { color: RISK_COLOR[risk] }]}>Risk: {risk}</Text>
-              </View>
-              <Text style={styles.confidence}>Confidence: {ai.confidence}%</Text>
-              <View style={[styles.recBadge, { backgroundColor: REC_COLOR[rec] + '20' }]}>
-                <Ionicons name="bulb-outline" size={11} color={REC_COLOR[rec]} />
-                <Text style={[styles.recBadgeText, { color: REC_COLOR[rec] }]}>AI: {REC_LABEL[rec]}</Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.aiPending}>
-            <Ionicons name="hourglass-outline" size={14} color="#D97706" />
-            <Text style={styles.aiPendingText}>AI analysis not yet available</Text>
-          </View>
-        )}
+        {/* ── Bill Information ── */}
+        <DashboardCard className="mb-4">
+          <SectionTitle icon="receipt-outline" title="Bill Information" />
+          <DetailRow label="Bill Number" value={bill.billCode} />
+          <DetailRow label="Invoice Number" value={bill.invoiceNumber} />
+          <DetailRow label="Invoice Date" value={formatDate(bill.invoiceDate)} />
+          <DetailRow label="Vendor" value={bill.vendor?.name ?? '—'} />
+          <DetailRow label="Department" value={bill.department?.name ?? '—'} />
+          <DetailRow label="Uploaded By" value={bill.uploadedBy?.name ?? '—'} />
+          <DetailRow label="Bill Amount" value={formatINR(bill.invoiceAmount)} />
+          <DetailRow label="Taxable Amount" value={formatINR(bill.taxableAmount)} />
+          <DetailRow label="GST" value={formatINR(bill.gstAmount)} />
+          <DetailRow label="Grand Total" value={formatINR(bill.grandTotal)} />
+          {latestInvoice ? (
+            <PdfLink label={`Invoice PDF — v${latestInvoice.version}`} url={latestInvoice.url} current />
+          ) : (
+            <Text className="mt-2 text-xs text-ink-muted dark:text-slate-500">No invoice PDF uploaded.</Text>
+          )}
+        </DashboardCard>
 
-        {/* Action buttons */}
-        {canDecide ? (
-          <View style={styles.buttonsSection}>
-            <Pressable
-              style={styles.approveBtn}
-              onPress={handleApprove}
-              disabled={isDeciding}
-              accessibilityRole="button"
-              accessibilityLabel="Financially approve this bill"
-            >
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.approveBtnText}>{alreadyDecided ? 'Re-Approve' : 'Approve'}</Text>
-            </Pressable>
+        {/* ── Approved Quotation ── */}
+        <DashboardCard className="mb-4">
+          <SectionTitle icon="document-text-outline" title="Approved Quotation" />
+          {quotation ? (
+            <>
+              <DetailRow label="Quotation Number" value={quotation.quotationCode} />
+              <DetailRow label="Quotation Amount" value={formatINR(quotation.amount)} />
+              <DetailRow label="GST" value={`${quotation.gst}%`} />
+              <DetailRow label="Grand Total" value={formatINR(quotation.grandTotal)} />
+              <DetailRow label="Vendor" value={quotation.vendor?.name ?? '—'} />
+              <DetailRow label="Department" value={refName(quotation.department)} />
+              <DetailRow label="Created By" value={refName(quotation.createdBy)} />
+              <DetailRow label="Submitted By" value={refName(quotation.submittedBy)} />
+              <DetailRow label="Approval Date" value={formatDate(quotation.approvalDate)} />
+              {latestQuotationPdf ? (
+                <PdfLink label={`Quotation PDF — v${latestQuotationPdf.version}`} url={latestQuotationPdf.url} current />
+              ) : (
+                <Text className="mt-2 text-xs text-ink-muted dark:text-slate-500">No quotation PDF uploaded.</Text>
+              )}
+            </>
+          ) : (
+            <Text className="text-xs text-ink-muted dark:text-slate-500">Quotation not found.</Text>
+          )}
+        </DashboardCard>
 
-            <View style={styles.twoButtonRow}>
+        {/* ── Purchase Order ── */}
+        <DashboardCard className="mb-4">
+          <SectionTitle icon="cart-outline" title="Purchase Order" />
+          {purchaseOrder ? (
+            <>
+              <DetailRow label="PO Number" value={purchaseOrder.poNumber} />
+              <DetailRow label="PO Amount" value={formatINR(purchaseOrder.grandTotal)} />
+              <DetailRow label="Created By" value={refName(purchaseOrder.createdBy)} />
+              <DetailRow label="Already Billed" value={formatINR(purchaseOrder.alreadyBilled)} />
+              <DetailRow label="Remaining Balance" value={formatINR(purchaseOrder.remainingBalance)} />
+              <DetailRow label="Available Balance" value={formatINR(purchaseOrder.availableBalance)} />
               <Pressable
-                style={styles.correctionBtn}
-                onPress={() => openRemarksFor('correction_required')}
-                disabled={isDeciding}
-                accessibilityRole="button"
+                accessibilityRole="link"
+                className="mt-2 flex-row items-center gap-2"
+                onPress={() => Linking.openURL(fileUrl(purchaseOrder.pdfDownloadPath))}
               >
-                <Ionicons name="pencil" size={16} color="#D97706" />
-                <Text style={styles.correctionBtnText}>Correction Required</Text>
+                <Ionicons name="download-outline" size={15} color="#1e88e5" />
+                <Text className="text-sm font-medium text-primary-600 underline">Download PO PDF</Text>
               </Pressable>
+            </>
+          ) : (
+            <Text className="text-xs text-ink-muted dark:text-slate-500">No Purchase Order linked yet.</Text>
+          )}
+        </DashboardCard>
 
-              <Pressable
-                style={styles.rejectBtn}
-                onPress={() => openRemarksFor('rejected')}
-                disabled={isDeciding}
-                accessibilityRole="button"
-              >
-                <Ionicons name="close-circle" size={16} color="#DC2626" />
-                <Text style={styles.rejectBtnText}>Reject</Text>
-              </Pressable>
-            </View>
+        {/* ── Previous Bills under this PO — only one Bill is ever active per PO, but a prior
+            Draft that was deleted and replaced still shows up here for full traceability. ── */}
+        {purchaseOrder && purchaseOrder.previousBills.length > 0 ? (
+          <DashboardCard className="mb-4">
+            <SectionTitle icon="time-outline" title="Previous Bills Under This PO" />
+            {purchaseOrder.previousBills.map((prev) => (
+              <View key={prev._id} className="border-t border-slate-100 py-2.5 dark:border-slate-800">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-ink dark:text-slate-200">{prev.billCode}</Text>
+                  <Text className="text-sm text-ink dark:text-white">{formatINR(prev.invoiceAmount)}</Text>
+                </View>
+                <View className="mt-0.5 flex-row items-center justify-between">
+                  <Text className="text-xs text-ink-muted dark:text-slate-500">
+                    {prev.invoiceNumber} · {formatDate(prev.createdAt)}
+                  </Text>
+                  <Text className="text-xs text-ink-muted dark:text-slate-500">
+                    {prev.isDeleted ? 'Deleted' : prev.status.replace(/_/g, ' ')}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </DashboardCard>
+        ) : null}
 
-            {alreadyDecided ? (
-              <View style={styles.alreadyDecidedBanner}>
-                <Ionicons name="refresh-outline" size={12} color="#D97706" />
-                <Text style={styles.alreadyDecidedText}>
-                  You have already acted. Buttons above will update your decision.
+        {/* ── AI Verification Summary ── */}
+        <DashboardCard className="mb-4">
+          <SectionTitle icon="sparkles" title="AI Verification Summary" />
+          {aiVerification.available ? (
+            <>
+              <View className="flex-row items-center gap-4">
+                <ScoreGauge value={aiVerification.matchPercentage ?? 0} />
+                <View className="flex-1 gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: RISK_BG[risk] }}>
+                      <Text className="text-[11px] font-bold" style={{ color: RISK_COLOR[risk] }}>Risk: {risk}</Text>
+                    </View>
+                    <View className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">
+                      <Text className="text-[11px] font-bold" style={{ color: REC_COLOR[rec] }}>
+                        {REC_LABEL[rec]}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text className="text-xs text-ink-muted dark:text-slate-400">
+                    Confidence: {aiVerification.confidence}% · Rule Engine: {aiVerification.ruleEngineScore}%
+                  </Text>
+                  <Text className="text-xs text-ink-muted dark:text-slate-400">
+                    Match % — Quotation: {aiVerification.quotationMatch ?? '—'}% · PO: {aiVerification.purchaseOrderMatch ?? '—'}%
+                  </Text>
+                </View>
+              </View>
+
+              {aiVerification.summary ? (
+                <Text className="mt-3 text-xs leading-5 text-ink dark:text-slate-300">{aiVerification.summary}</Text>
+              ) : null}
+
+              <View className="mt-3 flex-row flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <Text className="text-[11px] text-ink-muted dark:text-slate-500">
+                  Execution Time: {aiVerification.executionTimeMs ? `${(aiVerification.executionTimeMs / 1000).toFixed(1)}s` : '—'}
+                </Text>
+                <Text className="text-[11px] text-ink-muted dark:text-slate-500">
+                  Model: {aiVerification.modelVersion ?? '—'}
+                </Text>
+                <Text className="text-[11px] text-ink-muted dark:text-slate-500">
+                  Tokens: {aiVerification.tokenUsage?.totalTokens ?? '—'}
+                </Text>
+                <Text className="text-[11px] text-ink-muted dark:text-slate-500">
+                  Provider: {aiVerification.aiProvider === 'gemini' ? 'Gemini' : 'Rule Engine'}
                 </Text>
               </View>
-            ) : null}
+            </>
+          ) : (
+            <View className="items-center gap-3 rounded-xl bg-amber-50 px-4 py-5 dark:bg-amber-900/20">
+              <Ionicons name="hourglass-outline" size={22} color="#d97706" />
+              <Text className="text-center text-xs text-amber-700 dark:text-amber-400">
+                AI verification has not been run for this bill yet.
+              </Text>
+              {review.canTriggerAiVerification ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isTriggeringAi}
+                  onPress={handleRunAiVerification}
+                  className="flex-row items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 active:bg-amber-600"
+                >
+                  <Ionicons name="play-outline" size={15} color="#fff" />
+                  <Text className="text-xs font-bold text-white">
+                    {isTriggeringAi ? 'Running…' : 'Run AI Verification'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          )}
+        </DashboardCard>
+
+        {/* ── AI Comparison Table ── */}
+        {aiVerification.available ? (
+          <DashboardCard className="mb-4">
+            <SectionTitle icon="grid-outline" title="AI Comparison Table" />
+            <ComparisonTable rows={comparisonTable} />
+          </DashboardCard>
+        ) : null}
+
+        {/* ── Differences ── */}
+        {aiVerification.available ? (
+          <DashboardCard className="mb-4">
+            <SectionTitle icon="alert-circle-outline" title="Differences" />
+            <DifferencesPanel bySeverity={differencesBySeverity} />
+          </DashboardCard>
+        ) : null}
+
+        {/* ── Timeline ── */}
+        <DashboardCard className="mb-4">
+          <SectionTitle icon="time-outline" title="Timeline" />
+          <ReviewTimeline events={timeline} />
+        </DashboardCard>
+
+        {/* ── Previous decision (if any) ── */}
+        {bill.directorFinancialRemarks ? (
+          <DashboardCard className="mb-4 bg-amber-50 dark:bg-amber-900/10">
+            <Text className="text-sm font-semibold text-ink dark:text-slate-200">Your Previous Remarks</Text>
+            <Text className="mt-2 text-sm leading-5 text-amber-800 dark:text-amber-300">
+              {bill.directorFinancialRemarks}
+            </Text>
+          </DashboardCard>
+        ) : null}
+
+        {isFetching ? <Loader label="Refreshing…" /> : null}
+      </ScrollView>
+
+      {/* ── Sticky Approval Footer ── */}
+      {review.canDecide ? (
+        <View className="border-t border-slate-100 bg-white px-4 pb-6 pt-3 dark:border-slate-800 dark:bg-surface-dark">
+          {alreadyDecided ? (
+            <View className="mb-2 flex-row items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-900/20">
+              <Ionicons name="refresh-outline" size={12} color="#d97706" />
+              <Text className="flex-1 text-[11px] text-amber-700 dark:text-amber-400">
+                You already acted on this bill. Acting again will update your decision.
+              </Text>
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            disabled={isDeciding}
+            onPress={handleApprove}
+            className="flex-row items-center justify-center rounded-xl bg-success-500 py-3.5 active:bg-success-600"
+          >
+            <Ionicons name="checkmark-circle" size={19} color="#fff" />
+            <Text className="ml-2 text-sm font-bold text-white">{alreadyDecided ? 'Re-Approve' : 'Approve'}</Text>
+          </Pressable>
+          <View className="mt-2 flex-row gap-2">
+            <Pressable
+              accessibilityRole="button"
+              disabled={isDeciding}
+              onPress={() => setPendingDecision('correction_required')}
+              className="flex-1 flex-row items-center justify-center rounded-xl border-2 border-amber-300 bg-amber-50 py-3 active:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/20"
+            >
+              <Ionicons name="return-up-back-outline" size={16} color="#d97706" />
+              <Text className="ml-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">Send Back</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isDeciding}
+              onPress={() => setPendingDecision('rejected')}
+              className="flex-1 flex-row items-center justify-center rounded-xl border-2 border-red-300 bg-red-50 py-3 active:bg-red-100 dark:border-red-800 dark:bg-red-950/20"
+            >
+              <Ionicons name="close-circle-outline" size={16} color="#dc2626" />
+              <Text className="ml-1.5 text-xs font-bold text-red-600 dark:text-red-400">Reject</Text>
+            </Pressable>
           </View>
-        ) : (
-          <View style={styles.noActionBanner}>
+        </View>
+      ) : (
+        <View className="border-t border-slate-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-surface-dark">
+          <View className="flex-row items-center gap-3 rounded-xl bg-slate-100 px-4 py-3 dark:bg-slate-800">
             <Ionicons
               name={bill.directorFinancialDecision === 'approved' ? 'checkmark-circle' : 'information-circle-outline'}
-              size={18}
-              color={bill.directorFinancialDecision === 'approved' ? '#059669' : '#94a3b8'}
+              size={20}
+              color={bill.directorFinancialDecision === 'approved' ? '#43a047' : '#94a3b8'}
             />
-            <Text style={styles.noActionText}>
+            <Text className="flex-1 text-xs text-ink-muted dark:text-slate-400">
               {bill.directorFinancialDecision === 'approved'
                 ? 'You approved this bill. Forwarded to Accounts.'
                 : bill.directorFinancialDecision === 'rejected'
                   ? 'This bill was rejected.'
                   : bill.directorFinancialDecision === 'correction_required'
-                    ? 'Correction requested. Awaiting resubmission.'
+                    ? 'Sent back to Department for correction.'
                     : `No action available — current status is "${bill.status}".`}
             </Text>
           </View>
-        )}
-      </View>
-
-      {/* ── Scrollable detail section ── */}
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 3-Way Match Scores */}
-        {ai && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="analytics-outline" size={16} color="#7C3AED" />
-              <Text style={styles.cardTitle}>3-Way Match Analysis</Text>
-              <View style={styles.geminiPill}>
-                <Text style={styles.geminiPillText}>
-                  {ai.aiProvider === 'gemini' ? 'Gemini' : 'Rule Engine'}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.scoreRow}>
-              <ScoreColumn value={ai.quotationMatch} label="vs Quotation" />
-              {ai.quotationMatch != null && ai.purchaseOrderMatch != null && <View style={styles.scoreDivider} />}
-              <ScoreColumn value={ai.purchaseOrderMatch} label="vs PO" />
-              {ai.purchaseOrderMatch != null && <View style={styles.scoreDivider} />}
-              <ScoreColumn value={ai.matchPercentage} label="Overall" />
-            </View>
-            <View style={styles.engineRow}>
-              <Text style={styles.engineLabel}>Rule Engine Score</Text>
-              <Text style={styles.engineValue}>{ai.ruleEngineScore ?? '—'}%</Text>
-            </View>
-          </View>
-        )}
-
-        {/* AI Summary */}
-        {ai?.summary ? (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="sparkles" size={14} color="#7C3AED" />
-              <Text style={styles.cardTitle}>AI Summary</Text>
-            </View>
-            <Text style={styles.summaryText}>{ai.summary}</Text>
-          </View>
-        ) : null}
-
-        {/* Differences */}
-        {ai && ai.differences.length > 0 && (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="alert-circle-outline" size={14} color="#DC2626" />
-              <Text style={styles.cardTitle}>Differences ({ai.differences.length})</Text>
-            </View>
-            {ai.differences.map((d, i) => (
-              <View key={i} style={styles.diffRow}>
-                <View style={[styles.diffDot, { backgroundColor: SEV_COLOR[d.severity ?? 'MEDIUM'] }]} />
-                <View style={styles.diffContent}>
-                  <Text style={styles.diffField}>{d.field}</Text>
-                  <Text style={styles.diffDesc}>{d.difference}</Text>
-                  {(d.purchaseOrder != null || d.bill != null) && (
-                    <View style={styles.diffValues}>
-                      <Text style={styles.diffPo} numberOfLines={1}>PO: {String(d.purchaseOrder ?? '—')}</Text>
-                      <Text style={styles.diffBill} numberOfLines={1}>Bill: {String(d.bill ?? '—')}</Text>
-                    </View>
-                  )}
-                </View>
-                {d.severity && (
-                  <View style={[styles.sevBadge, { backgroundColor: SEV_COLOR[d.severity] + '20' }]}>
-                    <Text style={[styles.sevText, { color: SEV_COLOR[d.severity] }]}>{d.severity}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Bill Details */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Bill Details</Text>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Bill Code</Text>
-            <Text style={styles.detailValue}>{bill.billCode}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Invoice Number</Text>
-            <Text style={styles.detailValue}>{bill.invoiceNumber}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Invoice Date</Text>
-            <Text style={styles.detailValue}>{formatDate(bill.invoiceDate)}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Vendor</Text>
-            <Text style={styles.detailValue}>{bill.vendorName}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Department</Text>
-            <Text style={styles.detailValue}>{bill.departmentName}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Taxable Amount</Text>
-            <Text style={styles.detailValue}>{formatINR(bill.taxableAmount)}</Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>GST Amount</Text>
-            <Text style={styles.detailValue}>{formatINR(bill.gstAmount)}</Text>
-          </View>
-          {po && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>PO Number</Text>
-              <Text style={styles.detailValue}>{po.poNumber}</Text>
-            </View>
-          )}
         </View>
+      )}
 
-        {/* Director Remarks (if already decided) */}
-        {bill.directorFinancialRemarks ? (
-          <View style={[styles.card, styles.remarksCard]}>
-            <Text style={styles.cardTitle}>Your Previous Remarks</Text>
-            <Text style={styles.remarkText}>{bill.directorFinancialRemarks}</Text>
-          </View>
-        ) : null}
-      </ScrollView>
-
-      <RemarksModal
-        visible={remarksModalVisible}
+      <FinancialDecisionSheet
         decision={pendingDecision}
-        onConfirm={handleNonApproveConfirm}
-        onCancel={() => { setRemarksModalVisible(false); setPendingDecision(null); }}
-        isLoading={isDeciding}
+        isSubmitting={isDeciding}
+        onConfirm={handleConfirm}
+        onClose={() => setPendingDecision(null)}
       />
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: '#374151', marginTop: 12 },
-  emptySubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: 4, textAlign: 'center' },
-
-  headerCard: {
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  amountsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  amountCol: { flex: 1, alignItems: 'center' },
-  amountDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
-  amountLabel: { fontSize: 10, color: '#6B7280', marginBottom: 3, textTransform: 'uppercase', letterSpacing: 0.3 },
-  amountValue: { fontSize: 14, fontWeight: '700', color: '#111827' },
-
-  aiSummaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  overallScore: { alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 10, padding: 10, minWidth: 72 },
-  overallScoreValue: { fontSize: 22, fontWeight: '800', color: '#1D4ED8' },
-  overallScoreLabel: { fontSize: 10, color: '#6B7280', marginTop: 1 },
-  aiSummaryRight: { flex: 1, gap: 4 },
-  riskBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, alignSelf: 'flex-start' },
-  riskBadgeText: { fontSize: 11, fontWeight: '600' },
-  confidence: { fontSize: 11, color: '#6B7280' },
-  recBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 100, alignSelf: 'flex-start' },
-  recBadgeText: { fontSize: 11, fontWeight: '600' },
-  aiPending: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#FFFBEB', borderRadius: 8, marginBottom: 10 },
-  aiPendingText: { fontSize: 12, color: '#D97706' },
-
-  buttonsSection: { gap: 8 },
-  approveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#059669', borderRadius: 12, paddingVertical: 14, gap: 8 },
-  approveBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  twoButtonRow: { flexDirection: 'row', gap: 8 },
-  correctionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#D97706', borderRadius: 12, paddingVertical: 11, gap: 6, backgroundColor: '#FFFBEB' },
-  correctionBtnText: { fontSize: 13, fontWeight: '600', color: '#D97706' },
-  rejectBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#DC2626', borderRadius: 12, paddingVertical: 11, gap: 6, backgroundColor: '#FEF2F2' },
-  rejectBtnText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
-  btnDisabled: { opacity: 0.5 },
-  alreadyDecidedBanner: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFBEB', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  alreadyDecidedText: { flex: 1, fontSize: 11, color: '#D97706' },
-  noActionBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F9FAFB', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 10 },
-  noActionText: { flex: 1, fontSize: 13, color: '#6B7280' },
-
-  scroll: { flex: 1, backgroundColor: '#F8F9FA' },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 48 },
-
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  cardTitle: { fontSize: 13, fontWeight: '700', color: '#374151', flex: 1 },
-  geminiPill: { backgroundColor: '#EDE9FE', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 },
-  geminiPillText: { fontSize: 10, fontWeight: '700', color: '#7C3AED' },
-
-  scoreRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 10, paddingVertical: 12 },
-  scoreCol: { flex: 1, alignItems: 'center' },
-  scoreDivider: { width: 1, height: 36, backgroundColor: '#E5E7EB' },
-  scoreValue: { fontSize: 20, fontWeight: '800' },
-  scoreLabel: { fontSize: 10, color: '#6B7280', marginTop: 2, textAlign: 'center' },
-  engineRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, marginTop: 8, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  engineLabel: { fontSize: 12, color: '#6B7280' },
-  engineValue: { fontSize: 13, fontWeight: '700', color: '#374151' },
-
-  summaryText: { fontSize: 13, color: '#374151', lineHeight: 20 },
-
-  diffRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
-  diffDot: { width: 8, height: 8, borderRadius: 4, marginTop: 4, flexShrink: 0 },
-  diffContent: { flex: 1 },
-  diffField: { fontSize: 12, fontWeight: '700', color: '#1F2937' },
-  diffDesc: { fontSize: 11, color: '#6B7280', marginTop: 2, lineHeight: 15 },
-  diffValues: { flexDirection: 'row', gap: 8, marginTop: 3 },
-  diffPo: { fontSize: 11, color: '#1D4ED8', flex: 1 },
-  diffBill: { fontSize: 11, color: '#B45309', flex: 1 },
-  sevBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexShrink: 0 },
-  sevText: { fontSize: 10, fontWeight: '700' },
-
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#F9FAFB' },
-  detailLabel: { fontSize: 12, color: '#9CA3AF' },
-  detailValue: { fontSize: 13, fontWeight: '500', color: '#111827', maxWidth: '58%', textAlign: 'right' },
-
-  remarksCard: { backgroundColor: '#FFFBEB' },
-  remarkText: { fontSize: 13, color: '#92400E', lineHeight: 20 },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-  modalTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  modalSubtitle: { fontSize: 13, color: '#6B7280', marginBottom: 14, lineHeight: 19 },
-  remarksInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 12, fontSize: 14, minHeight: 100, textAlignVertical: 'top', color: '#111827' },
-  charCount: { fontSize: 11, color: '#9CA3AF', textAlign: 'right', marginTop: 4, marginBottom: 16 },
-  modalButtons: { flexDirection: 'row', gap: 10 },
-  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center' },
-  cancelBtnText: { fontSize: 14, fontWeight: '600', color: '#374151' },
-  confirmBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  confirmBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-});

@@ -98,6 +98,54 @@ export function resolveDeepLinkTarget(data: Record<string, string>): DeepLinkTar
   }
 }
 
+export interface InAppTarget {
+  /** Tab name inside the `Main` tab navigator (see MainTabParamList / role-specific tab lists). */
+  tab: string;
+  /** Screen name inside that tab's own stack navigator. */
+  screen: string;
+  params: Record<string, unknown>;
+}
+
+/**
+ * Role-aware "Open Related Record" target for the in-app Notification Details sheet —
+ * distinct from resolveDeepLinkTarget() above, which drives push-tap routing and doesn't
+ * need to pick a role-specific tab (it defers to the Notification list instead). This is the
+ * single implementation for that role branching, previously duplicated inside
+ * NotificationDetailsScreen.tsx.
+ */
+export function resolveInAppTarget(
+  module: string,
+  relatedRecordId: string,
+  role: string,
+): InAppTarget | null {
+  switch (module) {
+    case 'quotation':
+      if (role === 'director' || role === 'ceo') {
+        return { tab: 'PendingQuotations', screen: 'QuotationDetails', params: { quotationId: relatedRecordId } };
+      }
+      return { tab: 'Quotations', screen: 'QuotationDetails', params: { quotationId: relatedRecordId } };
+
+    case 'bill':
+      if (role === 'accounts') return { tab: 'Bills', screen: 'AccountsBillDetails', params: { billId: relatedRecordId } };
+      if (role === 'director' || role === 'ceo') {
+        return { tab: 'PendingBillApprovals', screen: 'BillDetails', params: { billId: relatedRecordId } };
+      }
+      return { tab: 'Bills', screen: 'BillDetails', params: { billId: relatedRecordId } };
+
+    case 'purchase_order':
+      return { tab: 'PurchaseOrders', screen: 'PurchaseOrderDetails', params: { purchaseOrderId: relatedRecordId } };
+
+    case 'payment':
+      return { tab: 'Payments', screen: 'PaymentDetails', params: { paymentId: relatedRecordId } };
+
+    case 'vendor':
+      return { tab: 'Vendors', screen: 'VendorDetails', params: { vendorId: relatedRecordId } };
+
+    default:
+      return null;
+  }
+}
+
 /** Extract the notification data payload from an expo-notifications response */
 export function getNotificationData(
   response: import('expo-notifications').NotificationResponse,

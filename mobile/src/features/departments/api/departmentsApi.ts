@@ -1,27 +1,49 @@
 import { baseApi } from '@/store/baseApi';
-import type { Department } from '@/features/departments/types';
+import type { Department, DepartmentAnalytics } from '@/features/departments/types';
 
-interface RawDepartment {
+interface RawHod {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  isActive: boolean;
+}
+
+export interface RawDepartment {
   _id: string;
   name: string;
   code: string;
   description?: string;
   departmentHead?: string;
+  hod?: RawHod;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  userCount?: number;
+  vendorCount?: number;
+  quotationCount?: number;
+  purchaseOrderCount?: number;
+  billCount?: number;
 }
 
-function toDepartment(raw: RawDepartment): Department {
+export function toDepartment(raw: RawDepartment): Department {
   return {
     id: raw._id,
     name: raw.name,
     code: raw.code,
     description: raw.description ?? '',
     departmentHead: raw.departmentHead,
+    hod: raw.hod
+      ? { id: raw.hod._id, name: raw.hod.name, email: raw.hod.email, phone: raw.hod.phone, isActive: raw.hod.isActive }
+      : undefined,
     isActive: raw.isActive,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    userCount: raw.userCount,
+    vendorCount: raw.vendorCount,
+    quotationCount: raw.quotationCount,
+    purchaseOrderCount: raw.purchaseOrderCount,
+    billCount: raw.billCount,
   };
 }
 
@@ -31,6 +53,9 @@ export interface DepartmentInput {
   description?: string;
   departmentHead?: string;
   isActive?: boolean;
+  createHod?: boolean;
+  hod?: { name: string; email: string; password: string; phone?: string };
+  hodId?: string;
 }
 
 export const departmentsApi = baseApi.injectEndpoints({
@@ -76,6 +101,21 @@ export const departmentsApi = baseApi.injectEndpoints({
         { type: 'Department', id: 'LIST' },
       ],
     }),
+
+    transferHod: builder.mutation<Department, { id: string; newHodId: string; demoteOldHod?: boolean }>({
+      query: ({ id, ...body }) => ({ url: `/departments/${id}/transfer-hod`, method: 'PUT', data: body }),
+      transformResponse: (raw: RawDepartment) => toDepartment(raw),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: 'Department', id },
+        { type: 'Department', id: 'LIST' },
+        { type: 'Users', id: 'LIST' },
+      ],
+    }),
+
+    getDepartmentAnalytics: builder.query<DepartmentAnalytics, string>({
+      query: (id) => ({ url: `/departments/${id}/analytics`, method: 'GET' }),
+      providesTags: (_result, _error, id) => [{ type: 'Department', id: `${id}-ANALYTICS` }],
+    }),
   }),
 });
 
@@ -85,4 +125,6 @@ export const {
   useUpdateDepartmentMutation,
   useSetDepartmentStatusMutation,
   useDeleteDepartmentMutation,
+  useTransferHodMutation,
+  useGetDepartmentAnalyticsQuery,
 } = departmentsApi;

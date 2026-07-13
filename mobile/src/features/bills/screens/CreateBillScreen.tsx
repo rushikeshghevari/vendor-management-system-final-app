@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import * as DocumentPicker from 'expo-document-picker';
-import { Alert, ScrollView, Text } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { BillForm } from '@/components/bills/BillForm';
@@ -11,9 +13,10 @@ import { Loader } from '@/components/ui/Loader';
 import { Screen } from '@/components/ui/Screen';
 import { useCreateBillMutation, useSubmitBillMutation, useUploadBillInvoiceMutation } from '@/features/bills/api/billsApi';
 import type { BillFormValues } from '@/features/bills/billSchema';
+import { useGetPurchaseOrderByQuotationQuery } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import { useGetQuotationsQuery } from '@/features/quotations/api/quotationsApi';
 import { getErrorMessage } from '@/utils/getErrorMessage';
-import type { BillsStackParamList } from '@/navigation/types';
+import type { BillsStackParamList, DepartmentUserTabParamList } from '@/navigation/types';
 
 type Props = NativeStackScreenProps<BillsStackParamList, 'CreateBill'>;
 
@@ -25,12 +28,18 @@ export function CreateBillScreen({ navigation, route }: Props) {
   const [createBill, { isLoading: isSavingDraft }] = useCreateBillMutation();
   const [submitBill, { isLoading: isSubmitting }] = useSubmitBillMutation();
   const [uploadInvoice, { isLoading: isUploading }] = useUploadBillInvoiceMutation();
+  // The backend now requires a Purchase Order to exist before a Bill can be created (see
+  // billService.create) — checked here too so the user sees why, instead of a raw 400 error
+  // after filling out the whole form.
+  const { data: linkedPo, isLoading: isLoadingPo } = useGetPurchaseOrderByQuotationQuery(quotationId, {
+    skip: !quotationId,
+  });
 
   const [invoiceFile, setInvoiceFile] = useState<PickedFile | null>(null);
 
   const quotation = quotations?.find((item) => item.id === quotationId);
 
-  if (isLoading) {
+  if (isLoading || isLoadingPo) {
     return (
       <Screen padded={false}>
         <AppHeader title="Create Bill" leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
@@ -57,6 +66,32 @@ export function CreateBillScreen({ navigation, route }: Props) {
             ? 'Bill already created for this quotation.'
             : 'A bill can only be created for an Approved quotation.'}
         </Text>
+      </Screen>
+    );
+  }
+
+  if (!linkedPo) {
+    return (
+      <Screen padded={false}>
+        <AppHeader title="Create Bill" leftIcon="arrow-back" onLeftPress={() => navigation.goBack()} />
+        <View className="flex-1 items-center justify-center p-8">
+          <Ionicons name="alert-circle-outline" size={40} color="#d97706" />
+          <Text className="mt-3 text-center text-base font-semibold text-ink dark:text-white">
+            Purchase Order required
+          </Text>
+          <Text className="mt-1.5 text-center text-sm text-ink-muted dark:text-slate-400">
+            A Purchase Order must be generated for "{quotation.quotationCode}" before a Bill can be created.
+          </Text>
+          <Button
+            label="Generate Purchase Order"
+            onPress={() =>
+              navigation
+                .getParent<BottomTabNavigationProp<DepartmentUserTabParamList>>()
+                ?.navigate('PurchaseOrders', { screen: 'CreatePurchaseOrder', params: { quotationId } })
+            }
+            className="mt-5"
+          />
+        </View>
       </Screen>
     );
   }
@@ -124,6 +159,19 @@ export function CreateBillScreen({ navigation, route }: Props) {
         contentContainerStyle={{ paddingBottom: 32 }}
         keyboardShouldPersistTaps="handled"
       >
+        <DashboardCard className="mb-4">
+          <Text className="text-sm font-semibold text-ink dark:text-slate-200">Purchase Order</Text>
+          <View className="mt-2 flex-row items-center justify-between">
+            <Text className="text-xs text-ink-muted dark:text-slate-400">{linkedPo.poNumber}</Text>
+            <Text className="text-sm font-bold text-primary-600">
+              ₹ {linkedPo.grandTotal.toLocaleString('en-IN')} available
+            </Text>
+          </View>
+          <Text className="mt-1 text-[11px] text-ink-muted dark:text-slate-500">
+            Your invoice amount cannot exceed this balance.
+          </Text>
+        </DashboardCard>
+
         <DashboardCard className="mb-4">
           <Text className="text-sm font-semibold text-ink dark:text-slate-200">Invoice PDF</Text>
           <Text className="mt-1 text-xs text-ink-muted dark:text-slate-400">

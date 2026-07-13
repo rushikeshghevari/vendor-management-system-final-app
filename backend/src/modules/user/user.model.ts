@@ -68,4 +68,9 @@ userSchema.methods.comparePassword = function comparePassword(candidate: string)
   return bcrypt.compare(candidate, this.password);
 };
 
+// Every HOD-scoped query (see hod.service.ts) filters by department, and Super Admin's
+// user list commonly filters by role — without these, both are full collection scans.
+userSchema.index({ department: 1 });
+userSchema.index({ role: 1 });
+
 export const User = model<IUser>('User', userSchema);

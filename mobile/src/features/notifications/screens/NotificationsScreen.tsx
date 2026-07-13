@@ -1,100 +1,194 @@
-import { useState, useCallback } from 'react';
-import {
-  Alert,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-} from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, SectionList, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { BottomSheetModal } from '@gorhom/bottom-sheet';
 
-import { Screen } from '@/components/ui/Screen';
 import { AppHeader } from '@/components/layout/AppHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Screen } from '@/components/ui/Screen';
+import { BulkActionBar } from '@/features/notifications/components/BulkActionBar';
+import { FilterChipsRow, type QuickFilterId } from '@/features/notifications/components/FilterChipsRow';
 import { NotificationCard } from '@/features/notifications/components/NotificationCard';
+import { NotificationDetailsSheet } from '@/features/notifications/components/NotificationDetailsSheet';
+import { NotificationGroupHeader } from '@/features/notifications/components/NotificationGroupHeader';
+import { NotificationSkeletonList } from '@/features/notifications/components/NotificationSkeleton';
+import { SearchBar } from '@/features/notifications/components/SearchBar';
 import {
-  useGetNotificationsQuery,
-  useMarkAllNotificationsReadMutation,
   useArchiveNotificationMutation,
   useDeleteNotificationMutation,
-  useDeleteAllNotificationsMutation,
+  useGetNotificationsQuery,
+  useMarkAllNotificationsReadMutation,
+  useMarkNotificationReadMutation,
+  usePinNotificationMutation,
+  useUnpinNotificationMutation,
 } from '@/features/notifications/api/notificationsApi';
-import type { Notification, NotificationModule } from '@/features/notifications/types';
-import type { NotificationsStackParamList } from '@/navigation/types';
+import type { Notification } from '@/features/notifications/types';
+import { groupByDate, matchesQuickFilter, type ClientFilterId } from '@/features/notifications/utils/notificationHelpers';
 import { useAuth } from '@/hooks/useAuth';
 import { ROLES } from '@/constants/roles';
+import { getErrorMessage } from '@/utils/getErrorMessage';
+import type { NotificationsStackParamList } from '@/navigation/types';
 
 type Props = NativeStackScreenProps<NotificationsStackParamList, 'NotificationList'>;
 
-type FilterTab = 'all' | 'unread' | 'archived';
+const PAGE_SIZE = 20;
+const CLIENT_FILTER_IDS = new Set<QuickFilterId>(['approval', 'ai', 'approved', 'rejected']);
 
-const MODULE_FILTERS: Array<{ label: string; value: NotificationModule | '' }> = [
-  { label: 'All',       value: '' },
-  { label: 'Quotation', value: 'quotation' },
-  { label: 'Bill',      value: 'bill' },
-  { label: 'PO',        value: 'purchase_order' },
-  { label: 'Payment',   value: 'payment' },
-  { label: 'System',    value: 'system' },
-];
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfWeek(): Date {
+  const d = startOfToday();
+  d.setDate(d.getDate() - 6);
+  return d;
+}
 
 export function NotificationsScreen({ navigation }: Props) {
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole(ROLES.SUPER_ADMIN);
 
-  const [activeTab, setActiveTab]       = useState<FilterTab>('all');
-  const [moduleFilter, setModuleFilter] = useState<NotificationModule | ''>('');
-  const [search, setSearch]             = useState('');
+  const [search, setSearch] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [activeChip, setActiveChip] = useState<QuickFilterId>('all');
+  const [page, setPage] = useState(1);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [detailsNotification, setDetailsNotification] = useState<Notification | null>(null);
 
-  const queryParams = {
-    limit:      100,
-    module:     moduleFilter || undefined,
-    isRead:     activeTab === 'unread' ? false : undefined,
-    isArchived: activeTab === 'archived' ? true : undefined,
-  };
+  const detailsSheetRef = useRef<BottomSheetModal>(null);
 
-  const { data: notifications = [], isLoading, isFetching, refetch } =
-    useGetNotificationsQuery(queryParams);
+  const serverParams = useMemo(() => {
+    const params: Record<string, unknown> = { page, limit: PAGE_SIZE };
+    if (search.trim()) params.search = search.trim();
+    if (activeChip === 'unread') params.isRead = false;
+    if (activeChip === 'read') params.isRead = true;
+    if (activeChip === 'highPriority') params.priority = 'high';
+    if (activeChip === 'bills') params.module = 'bill';
+    if (activeChip === 'payments') params.module = 'payment';
+    if (activeChip === 'purchaseOrders') params.module = 'purchase_order';
+    if (activeChip === 'system') params.module = 'system';
+    if (activeChip === 'today') params.since = startOfToday().toISOString();
+    if (activeChip === 'thisWeek') params.since = startOfWeek().toISOString();
+    return params;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, activeChip, page]);
 
+  const { data: notifications = [], isLoading, isFetching, refetch } = useGetNotificationsQuery(serverParams);
+
+  const [markRead] = useMarkNotificationReadMutation();
   const [markAllRead, { isLoading: isMarkingAll }] = useMarkAllNotificationsReadMutation();
-  const [archiveNotification]  = useArchiveNotificationMutation();
-  const [deleteNotification]   = useDeleteNotificationMutation();
-  const [deleteAll]            = useDeleteAllNotificationsMutation();
+  const [archiveNotification] = useArchiveNotificationMutation();
+  const [deleteNotification] = useDeleteNotificationMutation();
+  const [pinNotification] = usePinNotificationMutation();
+  const [unpinNotification] = useUnpinNotificationMutation();
 
-  const filtered = search.trim()
-    ? notifications.filter(
-        (n) =>
-          n.title.toLowerCase().includes(search.toLowerCase()) ||
-          n.message.toLowerCase().includes(search.toLowerCase()),
-      )
+  const visible = CLIENT_FILTER_IDS.has(activeChip)
+    ? notifications.filter((n) => matchesQuickFilter(n, activeChip as ClientFilterId))
     : notifications;
 
-  const handlePress = useCallback((n: Notification) => {
-    navigation.navigate('NotificationDetails', { notificationId: n.id });
-  }, [navigation]);
+  const sections = useMemo(() => {
+    return groupByDate(visible).map((section) => ({
+      title: section.title,
+      count: section.data.length,
+      data: collapsed[section.title] ? [] : section.data,
+    }));
+  }, [visible, collapsed]);
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const hasMore = !isLoading && notifications.length >= page * PAGE_SIZE;
 
-  const handleArchive = useCallback((id: string) => {
-    archiveNotification(id).catch(() => null);
-  }, [archiveNotification]);
+  const handleChipChange = useCallback((chip: QuickFilterId) => {
+    setActiveChip(chip);
+    setPage(1);
+  }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearch(value);
+    setPage(1);
+  }, []);
+
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !isFetching) setPage((p) => p + 1);
+  }, [hasMore, isFetching]);
+
+  const handleRefresh = useCallback(() => {
+    setPage(1);
+    refetch();
+  }, [refetch]);
+
+  const openDetails = useCallback((n: Notification) => {
+    setDetailsNotification(n);
+    detailsSheetRef.current?.present();
+    if (!n.isRead) markRead(n.id).catch(() => null);
+  }, [markRead]);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (next.size === 0) setSelectionMode(false);
+      return next;
+    });
+  }, []);
+
+  const handlePress = useCallback((n: Notification) => {
+    if (selectionMode) {
+      toggleSelected(n.id);
+      return;
+    }
+    openDetails(n);
+  }, [selectionMode, toggleSelected, openDetails]);
+
+  const handleLongPress = useCallback((n: Notification) => {
+    setSelectionMode(true);
+    toggleSelected(n.id);
+  }, [toggleSelected]);
+
+  const handleCancelSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkMarkRead = useCallback(() => {
+    Promise.all(Array.from(selectedIds).map((id) => markRead(id).catch(() => null))).finally(handleCancelSelection);
+  }, [selectedIds, markRead, handleCancelSelection]);
+
+  const handleBulkArchive = useCallback(() => {
+    Promise.all(Array.from(selectedIds).map((id) => archiveNotification(id).catch(() => null))).finally(handleCancelSelection);
+  }, [selectedIds, archiveNotification, handleCancelSelection]);
+
+  const handleBulkDelete = useCallback(() => {
+    Alert.alert('Delete Notifications', `Delete ${selectedIds.size} selected notification(s)?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          Promise.all(Array.from(selectedIds).map((id) => deleteNotification(id).catch(() => null))).finally(handleCancelSelection);
+        },
+      },
+    ]);
+  }, [selectedIds, deleteNotification, handleCancelSelection]);
 
   const handleDelete = useCallback((id: string) => {
     Alert.alert('Delete Notification', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteNotification(id).catch(() => null) },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteNotification(id).catch((error) => Alert.alert('Could Not Delete', getErrorMessage(error))) },
     ]);
   }, [deleteNotification]);
 
-  const handleDeleteAll = useCallback(() => {
-    Alert.alert('Delete All Notifications', 'This will remove all your notifications. Continue?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete All', style: 'destructive', onPress: () => deleteAll().catch(() => null) },
-    ]);
-  }, [deleteAll]);
+  const handleTogglePin = useCallback((n: Notification) => {
+    (n.isPinned ? unpinNotification(n.id) : pinNotification(n.id)).catch(() => null);
+  }, [pinNotification, unpinNotification]);
 
-  const unreadCount = notifications.filter((n) => !n.isRead && !n.isArchived).length;
+  const toggleSection = useCallback((title: string) => {
+    setCollapsed((prev) => ({ ...prev, [title]: !prev[title] }));
+  }, []);
 
   return (
     <Screen padded={false}>
@@ -103,139 +197,85 @@ export function NotificationsScreen({ navigation }: Props) {
         leftIcon="arrow-back"
         onLeftPress={() => navigation.goBack()}
         rightSlot={
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={() => markAllRead()}
-              disabled={isMarkingAll}
-              style={styles.headerBtn}
-            >
-              <Text style={styles.headerBtnText}>Mark all read</Text>
-            </TouchableOpacity>
-            {isSuperAdmin && (
-              <TouchableOpacity
-                onPress={() => navigation.navigate('NotificationSettings')}
-                style={styles.headerBtn}
-              >
-                <Ionicons name="settings-outline" size={18} color="#fff" />
-              </TouchableOpacity>
-            )}
+          <View className="flex-row items-center gap-4">
+            <Pressable onPress={() => setIsSearchVisible((v) => !v)} accessibilityRole="button" accessibilityLabel="Search" hitSlop={8}>
+              <Ionicons name="search-outline" size={20} color="#fff" />
+            </Pressable>
+            <Pressable onPress={() => markAllRead()} disabled={isMarkingAll} accessibilityRole="button" accessibilityLabel="Mark all read" hitSlop={8}>
+              <Ionicons name="checkmark-done-outline" size={20} color="#fff" />
+            </Pressable>
+            {isSuperAdmin ? (
+              <Pressable onPress={() => navigation.navigate('NotificationSettings')} accessibilityRole="button" accessibilityLabel="Notification settings" hitSlop={8}>
+                <Ionicons name="settings-outline" size={20} color="#fff" />
+              </Pressable>
+            ) : null}
           </View>
         }
       />
 
-      {/* Search */}
-      <View style={styles.searchRow}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={16} color="#9CA3AF" style={{ marginRight: 6 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search notifications..."
-            placeholderTextColor="#9CA3AF"
-            value={search}
-            onChangeText={setSearch}
+      <View className="flex-1 bg-surface-muted pt-3 dark:bg-surface-dark">
+        {isSearchVisible ? <SearchBar value={search} onChangeText={handleSearchChange} /> : null}
+
+        <FilterChipsRow active={activeChip} onChange={handleChipChange} />
+
+        {selectionMode ? (
+          <BulkActionBar
+            count={selectedIds.size}
+            onMarkRead={handleBulkMarkRead}
+            onArchive={handleBulkArchive}
+            onDelete={handleBulkDelete}
+            onCancel={handleCancelSelection}
           />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+        ) : null}
 
-      {/* Tab filter */}
-      <View style={styles.tabRow}>
-        {(['all', 'unread', 'archived'] as FilterTab[]).map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.tabActive]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={[styles.tab, styles.tabDelete]} onPress={handleDeleteAll}>
-          <Ionicons name="trash-outline" size={14} color="#9CA3AF" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Module filter chips */}
-      <FlatList
-        horizontal
-        data={MODULE_FILTERS}
-        keyExtractor={(f) => f.value || 'all'}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() => setModuleFilter(item.value as NotificationModule | '')}
-            style={[styles.chip, moduleFilter === item.value && styles.chipActive]}
-          >
-            <Text style={[styles.chipText, moduleFilter === item.value && styles.chipTextActive]}>
-              {item.label}
-            </Text>
-          </TouchableOpacity>
+        {isLoading ? (
+          <NotificationSkeletonList />
+        ) : visible.length === 0 ? (
+          <EmptyState title="No Notifications" description="You're all caught up — nothing matches this filter yet." />
+        ) : (
+          <SectionList
+            sections={sections}
+            keyExtractor={(item) => item.id}
+            renderSectionHeader={({ section }) =>
+              <NotificationGroupHeader
+                title={section.title}
+                count={section.count}
+                collapsed={Boolean(collapsed[section.title])}
+                onToggle={() => toggleSection(section.title)}
+              />
+            }
+            renderItem={({ item }) => (
+              <NotificationCard
+                notification={item}
+                selected={selectedIds.has(item.id)}
+                selectionMode={selectionMode}
+                onPress={handlePress}
+                onLongPress={handleLongPress}
+                onMarkRead={(id) => markRead(id).catch(() => null)}
+                onDelete={handleDelete}
+                onOpen={openDetails}
+                onTogglePin={handleTogglePin}
+              />
+            )}
+            removeClippedSubviews
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={7}
+            onEndReachedThreshold={0.4}
+            onEndReached={handleEndReached}
+            refreshing={isFetching && page === 1}
+            onRefresh={handleRefresh}
+            contentContainerStyle={{ paddingBottom: 24 }}
+            stickySectionHeadersEnabled={false}
+          />
         )}
-      />
+      </View>
 
-      {/* List */}
-      {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#2563EB" />
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={refetch} />}
-          renderItem={({ item }) => (
-            <NotificationCard
-              notification={item}
-              onPress={handlePress}
-              onArchive={handleArchive}
-              onDelete={handleDelete}
-            />
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="notifications-off-outline" size={52} color="#D1D5DB" />
-              <Text style={styles.emptyTitle}>No notifications</Text>
-              <Text style={styles.emptySubtitle}>
-                {activeTab === 'unread'
-                  ? "You're all caught up!"
-                  : activeTab === 'archived'
-                  ? 'No archived notifications'
-                  : 'No notifications yet'}
-              </Text>
-            </View>
-          }
-        />
-      )}
+      <NotificationDetailsSheet
+        ref={detailsSheetRef}
+        notification={detailsNotification}
+        onDismiss={() => setDetailsNotification(null)}
+      />
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  headerActions:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerBtn:       { paddingHorizontal: 4, paddingVertical: 2 },
-  headerBtnText:   { fontSize: 12, fontWeight: '600', color: '#fff' },
-  searchRow:       { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
-  searchBox:       { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, height: 42, borderWidth: 1, borderColor: '#E5E7EB' },
-  searchInput:     { flex: 1, fontSize: 14, color: '#111827' },
-  tabRow:          { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 8, gap: 8 },
-  tab:             { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 100, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
-  tabActive:       { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
-  tabDelete:       { marginLeft: 'auto', backgroundColor: '#F9FAFB' },
-  tabText:         { fontSize: 12, fontWeight: '500', color: '#6B7280' },
-  tabTextActive:   { color: '#2563EB', fontWeight: '600' },
-  filterRow:       { paddingHorizontal: 16, paddingBottom: 6, gap: 8 },
-  chip:            { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 100, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' },
-  chipActive:      { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
-  chipText:        { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-  chipTextActive:  { color: '#2563EB', fontWeight: '600' },
-  centered:        { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty:           { alignItems: 'center', paddingTop: 80, gap: 8 },
-  emptyTitle:      { fontSize: 16, fontWeight: '600', color: '#374151', marginTop: 8 },
-  emptySubtitle:   { fontSize: 13, color: '#9CA3AF' },
-});

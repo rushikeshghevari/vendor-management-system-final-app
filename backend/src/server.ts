@@ -1,3 +1,11 @@
+import dns from 'node:dns';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Node 18+ defaults to 'verbatim' DNS ordering, which can pick a broken IPv6
+// route to Atlas on some networks and cause TLS handshake ECONNRESET errors.
+dns.setDefaultResultOrder('ipv4first');
+
 import { createApp } from '@/app';
 import { connectDB, disconnectDB } from '@/config/db';
 import { env } from '@/config/env';
@@ -5,7 +13,18 @@ import { startEscalationScheduler, stopEscalationScheduler } from '@/services/es
 import { startQueueProcessor, stopQueueProcessor } from '@/services/push/notificationQueue.service';
 import { logger } from '@/utils/logger';
 
+function ensureUploadDirs(): void {
+  const dirs = [
+    path.join(process.cwd(), 'uploads', 'quotations'),
+    path.join(process.cwd(), 'uploads', 'bills'),
+  ];
+  for (const dir of dirs) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
 async function main(): Promise<void> {
+  ensureUploadDirs();
   await connectDB();
 
   const app = createApp();

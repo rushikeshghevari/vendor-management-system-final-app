@@ -38,8 +38,8 @@ function computeItemTotal(form: ItemForm): { gstAmount: number; taxAmount: numbe
   return { gstAmount, taxAmount, total };
 }
 
-export function CreatePurchaseOrderScreen({ navigation }: Props) {
-  const [selectedQuotationId, setSelectedQuotationId] = useState('');
+export function CreatePurchaseOrderScreen({ navigation, route }: Props) {
+  const [selectedQuotationId, setSelectedQuotationId] = useState(route.params?.quotationId ?? '');
   const [items, setItems] = useState<ItemForm[]>([EMPTY_ITEM]);
   const [terms, setTerms] = useState('');
   const [notes, setNotes] = useState('');

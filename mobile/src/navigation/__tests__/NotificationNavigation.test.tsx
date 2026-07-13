@@ -45,7 +45,7 @@ describe('Notification Center navigation', () => {
 
     // Tap the bell -> NotificationCenter (NotificationsNavigator) opens.
     fireEvent.press(screen.getByLabelText('Notifications'));
-    await waitFor(() => expect(screen.getByText('Mark all read')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('Mark all read')).toBeTruthy());
 
     // Going back from NotificationCenter pops the root stack straight back to "Main" — the
     // Profile tab's own nested stack was never touched, so it never absorbed this screen.

@@ -1,6 +1,7 @@
 export const BILL_STATUSES = [
   'draft',
   'submitted',
+  'ai_failed',
   'ai_verified',
   'director_approved',
   'director_rejected',
@@ -55,6 +56,16 @@ export interface Bill {
   departmentName: string;
   createdById: string;
   createdByName: string;
+  uploadedByName?: string;
+  uploadedByRole?: string;
+  purchaseOrderId?: string;
+  purchaseOrderNumber?: string;
+  // Denormalized AI summary — set once AI verification completes (see director.service.ts /
+  // bill.service.ts runAiPipelineForBill). The full result lives on the linked Purchase Order.
+  aiMatchPercentage?: number;
+  aiRisk?: 'LOW' | 'MEDIUM' | 'HIGH';
+  aiRecommendation?: 'APPROVE' | 'MANUAL_REVIEW' | 'REJECT';
+  aiVerifiedAt?: string;
   invoiceNumber: string;
   invoiceDate: string;
   invoiceAmount: number;
@@ -94,4 +105,23 @@ export interface PaymentBillStats {
   paymentPending: number;
   paidToday: number;
   completed: number;
+}
+
+export type BillTimelineEventType = 'bill_event' | 'accounts_decision' | 'ai_run';
+
+export interface BillTimelineEvent {
+  type: BillTimelineEventType;
+  event: string;
+  status?: string;
+  remarks?: string;
+  actorName?: string;
+  actorRole?: string;
+  at: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface BillTimeline {
+  billId: string;
+  billCode: string;
+  events: BillTimelineEvent[];
 }

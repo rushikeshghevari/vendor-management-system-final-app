@@ -31,6 +31,7 @@ export const NOTIFICATION_TYPES = [
   'bill_financial_rejected',
   'bill_director_correction_required',
   'ai_high_risk_alert',
+  'bill_ai_blocked',
   // Payment
   'payment_pending',
   'payment_created',
@@ -48,6 +49,11 @@ export const NOTIFICATION_TYPES = [
   'vendor_created',
   'vendor_updated',
   'vendor_inactive',
+  // HOD / Department user management
+  'hod_assigned',
+  'hod_transferred',
+  'department_user_created',
+  'department_user_disabled',
   // AI
   'ai_verification_started',
   'ai_verification_completed',
@@ -81,6 +87,7 @@ export interface INotification extends Document {
   category: NotificationCategory;
   isRead: boolean;
   isArchived: boolean;
+  isPinned: boolean;
   isDeleted: boolean;
   isPushSent: boolean;
   pushDeliveryStatus: PushDeliveryStatus;
@@ -106,6 +113,7 @@ const notificationSchema = new Schema<INotification>(
     category:         { type: String, enum: NOTIFICATION_CATEGORIES, default: 'information' },
     isRead:              { type: Boolean, default: false },
     isArchived:          { type: Boolean, default: false },
+    isPinned:            { type: Boolean, default: false },
     isDeleted:           { type: Boolean, default: false },
     isPushSent:          { type: Boolean, default: false },
     pushDeliveryStatus:  { type: String, enum: PUSH_DELIVERY_STATUSES, default: 'pending' },
@@ -119,6 +127,7 @@ const notificationSchema = new Schema<INotification>(
 
 notificationSchema.index({ receiver: 1, isRead: 1, createdAt: -1 });
 notificationSchema.index({ receiver: 1, isArchived: 1, createdAt: -1 });
+notificationSchema.index({ receiver: 1, isPinned: 1, createdAt: -1 });
 notificationSchema.index({ receiver: 1, isDeleted: 1, createdAt: -1 });
 
 export const Notification = model<INotification>('Notification', notificationSchema);

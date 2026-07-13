@@ -35,7 +35,9 @@
       "Read(//c/ProgramData/chocolatey/bin/**)",
       "PowerShell(choco install ngrok -y)",
       "Bash(mkdir -p 'C:\\\\Users\\\\LENOVO/bin')",
-      "Bash(curl -L -o 'C:\\\\Users\\\\LENOVO/bin/ngrok.zip' https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip)"
+      "Bash(curl -L -o 'C:\\\\Users\\\\LENOVO/bin/ngrok.zip' https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip)",
+      "Bash(git add *)",
+      "Bash(ngrok config *)"
     ],
     "additionalDirectories": [
       "d:\\Vendor Management System final app\\vms-mobile-temp"

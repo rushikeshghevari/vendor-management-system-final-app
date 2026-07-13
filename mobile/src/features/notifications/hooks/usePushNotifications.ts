@@ -32,8 +32,40 @@ import {
   getNotificationData,
   DEFAULT_ACTION_IDENTIFIER,
 } from '@/features/notifications/services/notificationDeepLink';
+import { useAppDispatch } from '@/hooks/useAppDispatch';
 import { useAuth } from '@/hooks/useAuth';
+import { baseApi } from '@/store/baseApi';
 import type { RootStackParamList } from '@/navigation/types';
+
+/** Modules whose RTK Query cache should refresh the instant a push arrives in the foreground —
+ *  e.g. so a Director's bill list updates the moment a bill finishes AI verification, without
+ *  waiting for the next poll tick or requiring the screen to be reopened. No websocket layer
+ *  exists in this app (see AGENTS.md/architecture) — push notifications are already the
+ *  real-time channel, this just closes the "arrived but nothing refetched" gap. */
+const CACHE_INVALIDATION_TAGS: Record<string, { type: 'Bill' | 'Quotation' | 'PurchaseOrder' | 'Payment'; id: string }[]> = {
+  // Every Bill-lifecycle notification (submitted, AI verified, Director approved/rejected,
+  // Accounts verified) is dispatched with `module: 'bill'`, including the "ready for payment"
+  // one Accounts' decide() sends to Payment Department users — so the Payment tags belong here
+  // too, not only under the (separately-used) 'payment' module below.
+  bill: [
+    { type: 'Bill', id: 'LIST' },
+    { type: 'Bill', id: 'DIRECTOR_STATS' },
+    { type: 'Bill', id: 'ACCOUNTS_STATS' },
+    { type: 'Bill', id: 'PAYMENT_STATS' },
+    { type: 'Payment', id: 'PAYMENT_DEPT_STATS' },
+    { type: 'Payment', id: 'ACCOUNTS_STATS' },
+  ],
+  quotation: [
+    { type: 'Quotation', id: 'LIST' },
+    { type: 'Quotation', id: 'DIRECTOR_STATS' },
+    { type: 'Quotation', id: 'CEO_STATS' },
+  ],
+  purchase_order: [{ type: 'PurchaseOrder', id: 'LIST' }],
+  payment: [
+    { type: 'Payment', id: 'PAYMENT_DEPT_STATS' },
+    { type: 'Payment', id: 'ACCOUNTS_STATS' },
+  ],
+};
 
 // Global handler: show alert banner when app is in foreground
 Notifications.setNotificationHandler({
@@ -161,6 +193,7 @@ function getPlatform(): 'android' | 'ios' | 'web' {
 
 export function usePushNotifications() {
   const { isAuthenticated } = useAuth();
+  const dispatch = useAppDispatch();
   const [registerDevice] = useRegisterDeviceMutation();
   const [removeDevice]   = useRemoveDeviceMutation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -287,6 +320,13 @@ export function usePushNotifications() {
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       console.info('[push] Foreground notification:', notification.request.content.title);
       // Badge is managed by shouldSetBadge: true in the global handler
+
+      // Instant cache refresh — e.g. a Director's Bill list picks up a just-AI-verified bill
+      // immediately, without waiting for the next poll tick or the screen being reopened.
+      const data = notification.request.content.data as Record<string, unknown> | undefined;
+      const mod = typeof data?.module === 'string' ? data.module : undefined;
+      const tags = mod ? CACHE_INVALIDATION_TAGS[mod] : undefined;
+      if (tags) dispatch(baseApi.util.invalidateTags(tags));
     });
 
     // User tapped a notification or an action button
@@ -305,7 +345,7 @@ export function usePushNotifications() {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, [handleNotificationResponse]);
+  }, [handleNotificationResponse, dispatch]);
 
   // Token refresh — FCM rotates tokens; re-register automatically.
   // Guard: skip if the incoming token equals the one already registered this session.

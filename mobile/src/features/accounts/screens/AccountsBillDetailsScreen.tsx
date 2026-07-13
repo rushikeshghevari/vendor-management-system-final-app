@@ -21,6 +21,7 @@ type Props = NativeStackScreenProps<AccountsBillsStackParamList, 'AccountsBillDe
 const STATUS_LABEL: Record<BillStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
+  ai_failed: 'AI Failed',
   ai_verified: 'AI Verified',
   director_approved: 'Director Approved',
   director_rejected: 'Director Rejected',
@@ -36,6 +37,7 @@ const STATUS_LABEL: Record<BillStatus, string> = {
 const STATUS_VARIANT: Record<BillStatus, 'primary' | 'success' | 'danger' | 'neutral'> = {
   draft: 'neutral',
   submitted: 'primary',
+  ai_failed: 'danger',
   ai_verified: 'primary',
   director_approved: 'success',
   director_rejected: 'danger',

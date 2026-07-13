@@ -1,4 +1,4 @@
-import { ROLES } from '@/constants/roles';
+import { ROLES, type Role } from '@/constants/roles';
 import { PO_STATUS, QUOTATION_STATUS } from '@/constants/status';
 import { Bill } from '@/modules/bill/bill.model';
 import { notificationService } from '@/modules/notification/notification.service';
@@ -19,6 +19,8 @@ import { runAiVerification } from '@/services/ai/aiVerification.service';
 function scopeToRole(actor: Actor, filter: Record<string, unknown>): void {
   if (actor.role === ROLES.DEPARTMENT_USER) {
     filter.createdBy = actor.id;
+  } else if (actor.role === ROLES.HOD) {
+    filter.department = actor.department;
   }
   // Directors, CEO, Accounts, Payment — see all (read-only)
   // Super Admin — sees all
@@ -47,11 +49,13 @@ const POPULATE_DETAIL = [
   { path: 'bill',       select: 'billCode status invoiceAmount invoiceNumber invoiceDate invoiceFiles decisionHistory verifiedAt verifiedBy' },
 ];
 
+const PO_CREATE_ROLES: Role[] = [ROLES.DEPARTMENT_USER, ROLES.HOD, ROLES.SUPER_ADMIN];
+
 export const purchaseOrderService = {
 
   async create(input: CreatePurchaseOrderInput, actor: Actor): Promise<IPurchaseOrder> {
-    if (actor.role !== ROLES.DEPARTMENT_USER && actor.role !== ROLES.SUPER_ADMIN) {
-      throw ApiError.forbidden('Only Department Users can generate Purchase Orders');
+    if (!PO_CREATE_ROLES.includes(actor.role)) {
+      throw ApiError.forbidden('Only a Department User or HOD can generate Purchase Orders');
     }
 
     // Fetch quotation (must be approved)
@@ -171,8 +175,8 @@ export const purchaseOrderService = {
     const po = await PurchaseOrder.findOne({ _id: id, isDeleted: false });
     if (!po) throw ApiError.notFound('Purchase Order not found');
 
-    if (![ROLES.ACCOUNTS, ROLES.SUPER_ADMIN].includes(actor.role as never)) {
-      throw ApiError.forbidden('Only Accounts or Super Admin can trigger AI verification');
+    if (![ROLES.ACCOUNTS, ROLES.SUPER_ADMIN, ROLES.DIRECTOR].includes(actor.role as never)) {
+      throw ApiError.forbidden('Only Accounts, Super Admin, or Director can trigger AI verification');
     }
 
     if (!po.bill) {

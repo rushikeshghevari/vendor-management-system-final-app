@@ -42,7 +42,7 @@ export function PaymentListScreen({ navigation, route }: Props) {
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
   const searchInputRef = useRef<TextInput>(null);
 
-  const { data: payments, isLoading, isFetching, refetch } = useGetPaymentsQuery();
+  const { data: payments, isLoading, isFetching, refetch } = useGetPaymentsQuery(undefined, { pollingInterval: 15000 });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusTab, setStatusTab] = useState<PaymentStatus | 'all'>(route.params?.initialStatus ?? 'all');

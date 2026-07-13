@@ -51,6 +51,23 @@ export interface DirectorApproval {
   decidedAt: string | null;
 }
 
+export interface LinkedPurchaseOrderSummary {
+  id: string;
+  poNumber: string;
+  grandTotal: number;
+  status: string;
+  createdByName?: string;
+}
+
+export interface LinkedBillSummary {
+  id: string;
+  billCode: string;
+  status: string;
+  invoiceAmount: number;
+  uploadedByName?: string;
+  uploadedByRole?: string;
+}
+
 export interface Quotation {
   id: string;
   quotationCode: string;
@@ -61,6 +78,9 @@ export interface Quotation {
   departmentName: string;
   createdById: string;
   createdByName: string;
+  submittedByName?: string;
+  linkedPurchaseOrder?: LinkedPurchaseOrderSummary | null;
+  linkedBill?: LinkedBillSummary | null;
   quotationDate: string;
   requiredDate: string;
   amount: number;

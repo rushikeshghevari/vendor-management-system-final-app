@@ -151,6 +151,12 @@ const purchaseOrdersApi = baseApi.injectEndpoints({
       ],
     }),
 
+    // Audit-only — the actual share (PDF/Email/WhatsApp/Print) happens entirely on-device via
+    // the OS share sheet; this just records that it happened for the Activity Log.
+    sharePurchaseOrder: build.mutation<void, { id: string; channel?: string }>({
+      query: ({ id, channel }) => ({ url: `/purchase-orders/${id}/share`, method: 'POST', data: { channel } }),
+    }),
+
     getAuditLogs: build.query<AuditLog[], { purchaseOrderId?: string; accountsDecision?: string } | void>({
       query: (params) => ({ url: '/audit-logs', params: params ?? {} }),
       transformResponse: (raw: unknown[]) =>
@@ -231,6 +237,7 @@ export const {
   useGetPurchaseOrderStatsQuery,
   useCreatePurchaseOrderMutation,
   useTriggerAiVerificationMutation,
+  useSharePurchaseOrderMutation,
   useCreateAuditLogMutation,
   useGetAuditLogsQuery,
   useGetAuditLogsByPoQuery,

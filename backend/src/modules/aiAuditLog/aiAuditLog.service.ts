@@ -66,6 +66,15 @@ export const aiAuditLogService = {
       .lean() as Promise<IAiAuditLog[]>;
   },
 
+  /** No role check here — the caller (billService.getTimeline) has already verified the actor
+   *  can see this Bill via the same role-scoped visibility rule as every other bill endpoint. */
+  async listByBill(billId: string): Promise<IAiAuditLog[]> {
+    return AiAuditLog.find({ bill: billId })
+      .sort({ createdAt: -1 })
+      .populate('triggeredBy', 'name email')
+      .lean() as Promise<IAiAuditLog[]>;
+  },
+
   async list(
     query: Record<string, unknown>,
     actor: Actor,

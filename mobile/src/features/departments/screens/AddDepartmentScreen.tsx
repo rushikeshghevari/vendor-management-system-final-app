@@ -25,6 +25,11 @@ export function AddDepartmentScreen({ navigation }: Props) {
         description: values.description,
         departmentHead: values.departmentHead || undefined,
         isActive: values.status === 'active',
+        createHod: values.hodAssignmentMode === 'create' || undefined,
+        hod: values.hodAssignmentMode === 'create'
+          ? { name: values.newHodName!, email: values.newHodEmail!, password: values.newHodPassword!, phone: values.newHodPhone || undefined }
+          : undefined,
+        hodId: values.hodAssignmentMode === 'assign' ? values.existingHodId : undefined,
       }).unwrap();
       navigation.goBack();
     } catch (error) {

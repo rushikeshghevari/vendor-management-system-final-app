@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { activityLogService } from '@/modules/activityLog/activityLog.service';
 import { paymentService } from '@/modules/payment/payment.service';
 import { sendSuccess } from '@/utils/ApiResponse';
 import { catchAsync } from '@/utils/catchAsync';
@@ -37,6 +38,13 @@ export const paymentController = {
 
   markCompleted: catchAsync(async (req: Request, res: Response) => {
     const payment = await paymentService.markCompleted(req.params.id as string, req.user!);
+
+    activityLogService.record(
+      { action: 'payment_completed', targetId: payment.id, targetType: 'Payment', newValue: { paymentCode: payment.paymentCode, bill: payment.bill } },
+      req.user!,
+      req,
+    ).catch(() => null);
+
     sendSuccess(res, payment, 'Payment marked as completed');
   }),
 

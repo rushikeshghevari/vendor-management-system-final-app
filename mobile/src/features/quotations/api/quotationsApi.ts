@@ -5,6 +5,8 @@ import type {
   DirectorApproval,
   DirectorDecision,
   DirectorQuotationStats,
+  LinkedBillSummary,
+  LinkedPurchaseOrderSummary,
   Quotation,
   QuotationCurrency,
   QuotationPdfVersion,
@@ -18,6 +20,23 @@ interface RawRef {
   code?: string;
   email?: string;
   status?: string;
+}
+
+interface RawLinkedPo {
+  _id: string;
+  poNumber: string;
+  grandTotal: number;
+  status: string;
+  createdBy?: { name?: string } | string;
+}
+
+interface RawLinkedBill {
+  _id: string;
+  billCode: string;
+  status: string;
+  invoiceAmount: number;
+  uploadedByName?: string;
+  uploadedByRole?: string;
 }
 
 interface RawDirectorApproval {
@@ -34,6 +53,9 @@ interface RawQuotation {
   vendor: RawRef | string;
   department: RawRef | string;
   createdBy: RawRef | string;
+  submittedBy?: RawRef | string;
+  linkedPurchaseOrder?: RawLinkedPo | null;
+  linkedBill?: RawLinkedBill | null;
   quotationDate: string;
   requiredDate: string;
   amount: number;
@@ -53,13 +75,39 @@ interface RawQuotation {
   updatedAt: string;
 }
 
+function toLinkedPurchaseOrder(raw?: RawLinkedPo | null): LinkedPurchaseOrderSummary | null {
+  if (!raw) return null;
+  const createdBy = raw.createdBy;
+  return {
+    id: raw._id,
+    poNumber: raw.poNumber,
+    grandTotal: raw.grandTotal,
+    status: raw.status,
+    createdByName: typeof createdBy === 'object' && createdBy !== null ? createdBy.name : undefined,
+  };
+}
+
+function toLinkedBill(raw?: RawLinkedBill | null): LinkedBillSummary | null {
+  if (!raw) return null;
+  return {
+    id: raw._id,
+    billCode: raw.billCode,
+    status: raw.status,
+    invoiceAmount: raw.invoiceAmount,
+    uploadedByName: raw.uploadedByName,
+    uploadedByRole: raw.uploadedByRole,
+  };
+}
+
 function toQuotation(raw: RawQuotation): Quotation {
   const vendor = raw.vendor;
   const department = raw.department;
   const createdBy = raw.createdBy;
+  const submittedBy = raw.submittedBy;
   const isVendorPopulated = typeof vendor === 'object' && vendor !== null;
   const isDeptPopulated = typeof department === 'object' && department !== null;
   const isCreatedByPopulated = typeof createdBy === 'object' && createdBy !== null;
+  const isSubmittedByPopulated = typeof submittedBy === 'object' && submittedBy !== null;
 
   return {
     id: raw._id,
@@ -71,6 +119,9 @@ function toQuotation(raw: RawQuotation): Quotation {
     departmentName: isDeptPopulated ? department.name : '',
     createdById: isCreatedByPopulated ? createdBy._id : createdBy,
     createdByName: isCreatedByPopulated ? createdBy.name : '',
+    submittedByName: isSubmittedByPopulated ? submittedBy.name : (isCreatedByPopulated ? createdBy.name : undefined),
+    linkedPurchaseOrder: toLinkedPurchaseOrder(raw.linkedPurchaseOrder),
+    linkedBill: toLinkedBill(raw.linkedBill),
     quotationDate: raw.quotationDate,
     requiredDate: raw.requiredDate,
     amount: raw.amount,
@@ -118,6 +169,15 @@ export const quotationsApi = baseApi.injectEndpoints({
         ...(result ?? []).map((item) => ({ type: 'Quotation' as const, id: item.id })),
         { type: 'Quotation' as const, id: 'LIST' },
       ],
+    }),
+
+    // Single-quotation fetch — carries linkedPurchaseOrder/linkedBill/submittedBy that the
+    // list endpoint doesn't enrich (would be an N+1 lookup per row at list scale). Used by
+    // the approval screen instead of the old list+find pattern for those extra fields.
+    getQuotationById: builder.query<Quotation, string>({
+      query: (id) => ({ url: `/quotations/${id}`, method: 'GET' }),
+      transformResponse: (raw: RawQuotation) => toQuotation(raw),
+      providesTags: (_result, _error, id) => [{ type: 'Quotation', id }],
     }),
 
     getDirectorQuotationStats: builder.query<DirectorQuotationStats, void>({
@@ -208,6 +268,7 @@ export const quotationsApi = baseApi.injectEndpoints({
 
 export const {
   useGetQuotationsQuery,
+  useGetQuotationByIdQuery,
   useGetDirectorQuotationStatsQuery,
   useGetCeoQuotationStatsQuery,
   useDecideQuotationMutation,

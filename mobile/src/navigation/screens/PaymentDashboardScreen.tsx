@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacit
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
+import { AnalyticsBar } from '@/components/dashboard/AnalyticsBar';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { Avatar } from '@/components/ui/Avatar';
 import { NotificationBell } from '@/components/ui/NotificationBell';
@@ -67,28 +68,15 @@ function SectionHeader({ title, onViewAll }: { title: string; onViewAll?: () => 
   );
 }
 
-function AnalyticsBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.min(value / max, 1) : 0;
-  return (
-    <View style={styles.analyticsRow}>
-      <View style={styles.analyticsLabelRow}>
-        <Text style={styles.analyticsLabel}>{label}</Text>
-        <Text style={[styles.analyticsCount, { color }]}>{value}</Text>
-      </View>
-      <View style={styles.analyticsBarBg}>
-        <View style={[styles.analyticsBarFill, { width: `${Math.round(pct * 100)}%` as `${number}%`, backgroundColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
 export function PaymentDashboardScreen({ navigation }: Props) {
   const { user } = useAuth();
   const drawer = useDrawer();
   if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
-  const { data: stats, isLoading, isFetching, refetch } = useGetPaymentDeptStatsQuery();
+  // Refresh automatically once Accounts verifies a bill — Payment shouldn't have to reopen
+  // the screen to see it land in "Ready For Payment".
+  const { data: stats, isLoading, isFetching, refetch } = useGetPaymentDeptStatsQuery(undefined, { pollingInterval: 15000 });
   const { data: unreadCount } = useGetUnreadNotificationCountQuery();
 
   const goToReadyForPayment = () => navigation.navigate('Payments', { screen: 'BillsReadyForPayment' });
@@ -252,12 +240,6 @@ const styles = StyleSheet.create({
   qaLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: '#334155', lineHeight: 16 },
 
   analyticsCard: { backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  analyticsRow: { marginBottom: 4 },
-  analyticsLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  analyticsLabel: { fontSize: 12, color: '#475569', fontWeight: '500' },
-  analyticsCount: { fontSize: 12, fontWeight: '700' },
-  analyticsBarBg: { height: 6, backgroundColor: '#f1f5f9', borderRadius: 3, overflow: 'hidden' },
-  analyticsBarFill: { height: 6, borderRadius: 3 },
   analyticsDivider: { height: 12 },
 
   listCard: { backgroundColor: '#ffffff', borderRadius: 14, marginHorizontal: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2, marginBottom: 8 },

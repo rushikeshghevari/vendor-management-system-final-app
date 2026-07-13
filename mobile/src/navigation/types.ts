@@ -51,6 +51,28 @@ export type DepartmentsStackParamList = {
   EditDepartment: { departmentId: string };
 };
 
+/** HOD's own Users stack — hits /hod/users, not /users, so it's a separate stack from
+ *  UsersStackParamList (Super Admin's). No role/department params — both are always
+ *  implicit for an HOD (see hod.service.ts on the backend). */
+export type HodUsersStackParamList = {
+  UserList: undefined;
+  CreateUser: undefined;
+  UserDetails: { userId: string };
+  EditUser: { userId: string };
+};
+
+/** Bottom tabs for the `hod` role — department-wide access to Users, Vendors, Quotations,
+ *  Bills, and Purchase Orders (see HodNavigator.tsx). */
+export type HodTabParamList = {
+  Dashboard: undefined;
+  Users: NavigatorScreenParams<HodUsersStackParamList> | undefined;
+  Vendors: NavigatorScreenParams<VendorsStackParamList> | undefined;
+  Quotations: NavigatorScreenParams<QuotationsStackParamList> | undefined;
+  Bills: NavigatorScreenParams<BillsStackParamList> | undefined;
+  PurchaseOrders: NavigatorScreenParams<PurchaseOrderStackParamList> | undefined;
+  Profile: undefined;
+};
+
 export type ProfileStackParamList = {
   ProfileHome: undefined;
   ChangePassword: undefined;
@@ -86,7 +108,10 @@ export type BillsStackParamList = {
 export type PurchaseOrderStackParamList = {
   PurchaseOrderList: undefined;
   PurchaseOrderDetails: { purchaseOrderId: string };
-  CreatePurchaseOrder: undefined;
+  // `quotationId` pre-selects the quotation when navigated to straight from a just-Approved
+  // Quotation's "Generate Purchase Order" CTA (see QuotationDetailsScreen.tsx) — optional so
+  // the FAB entry point on PurchaseOrderListScreen keeps working with a blank picker.
+  CreatePurchaseOrder: { quotationId?: string } | undefined;
   ComparisonScreen: { purchaseOrderId: string };
 };
 
@@ -131,6 +156,9 @@ export type DirectorTabParamList = {
   // Reuses the same BillsStackParamList/BillsNavigator Department Users use — gated by role
   // inside BillListScreen/BillDetailsScreen, the same pattern PendingQuotations already uses.
   PendingBillApprovals: NavigatorScreenParams<BillsStackParamList> | undefined;
+  // Read-only for Director — the backend already allows Director to view/download/share/verify
+  // POs (see purchase-order routes), this just exposes the existing screens in the mobile nav.
+  PurchaseOrders: NavigatorScreenParams<PurchaseOrderStackParamList> | undefined;
   Reports: undefined;
   Profile: undefined;
 };
@@ -152,9 +180,10 @@ export type PaymentTabParamList = {
   Profile: undefined;
 };
 
+// Notification details are now shown via NotificationDetailsSheet (a bottom sheet opened
+// in-place from NotificationsScreen), not a pushed stack screen — see that component.
 export type NotificationsStackParamList = {
   NotificationList:    undefined;
-  NotificationDetails: { notificationId: string };
   NotificationSettings: undefined;
 };
 

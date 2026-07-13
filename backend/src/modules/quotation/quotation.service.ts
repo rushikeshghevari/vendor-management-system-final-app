@@ -1,7 +1,9 @@
-import { ROLES } from '@/constants/roles';
+import { ROLES, type Role } from '@/constants/roles';
 import { QUOTATION_STATUS, type QuotationStatus } from '@/constants/status';
+import { Bill } from '@/modules/bill/bill.model';
 import { Department } from '@/modules/department/department.model';
 import { notificationService } from '@/modules/notification/notification.service';
+import { PurchaseOrder } from '@/modules/purchaseOrder/purchaseOrder.model';
 import { Quotation, type IQuotation } from '@/modules/quotation/quotation.model';
 import type {
   CreateQuotationInput,
@@ -50,6 +52,8 @@ const DECIDABLE_STATUSES = [
 function scopeToOwner(actor: Actor, filter: Record<string, unknown>, ceoApprovalLimit: number) {
   if (actor.role === ROLES.DEPARTMENT_USER) {
     filter.createdBy = actor.id;
+  } else if (actor.role === ROLES.HOD) {
+    filter.department = actor.department;
   } else if (actor.role === ROLES.DIRECTOR) {
     filter.status = { $nin: [QUOTATION_STATUS.DRAFT, QUOTATION_STATUS.BILLED] };
     filter.amount = { $gt: ceoApprovalLimit };
@@ -115,6 +119,34 @@ function mergeDirectorApprovals(quotation: IQuotation, approvers: ApproverRecord
   });
 
   return roster;
+}
+
+/**
+ * Self-healing read-repair: `status` is a denormalized field that `decide()` flips once
+ * `isRosterFullyApproved` becomes true — normally in the same request as the deciding
+ * Director's vote. A live quotation was found stuck at SUBMITTED with every Director on its
+ * roster showing "approved" (status never flipped, cause not reproducible from the stored
+ * data alone — plausibly a lost update between the read and the write in `decide()`). Rather
+ * than rely solely on that single code path being race-free, every read here re-derives
+ * "fully approved" from the roster (the real source of truth) and heals `status` in place if
+ * it's stale — so a future recurrence self-corrects the next time anyone views the quotation,
+ * instead of silently blocking "Generate PO" until someone notices and re-approves.
+ */
+function reconcileApprovalStatus(
+  quotation: IQuotation,
+  roster: ReturnType<typeof mergeDirectorApprovals>,
+): void {
+  if (
+    (quotation.status === QUOTATION_STATUS.SUBMITTED || quotation.status === QUOTATION_STATUS.RESUBMITTED)
+    && isRosterFullyApproved(roster)
+  ) {
+    quotation.status = QUOTATION_STATUS.APPROVED;
+    quotation.decisionAt = quotation.decisionAt ?? new Date();
+    Quotation.updateOne(
+      { _id: quotation._id, status: { $in: [QUOTATION_STATUS.SUBMITTED, QUOTATION_STATUS.RESUBMITTED] } },
+      { status: QUOTATION_STATUS.APPROVED, decisionAt: quotation.decisionAt },
+    ).catch((err) => console.error('[Quotation] Self-heal status repair failed:', err));
+  }
 }
 
 /** Broadcasts a "review this" notification to whichever approver role the route requires
@@ -289,16 +321,28 @@ async function generateQuotationCode(departmentId: string): Promise<string> {
   return `${codePrefix}${String(sequence).padStart(3, '0')}`;
 }
 
+/** Mutation-scope filter — a Department User may only touch quotations they personally
+ *  created; an HOD may touch anything in their department. Only ever called after the
+ *  route/service write-guard has already restricted the caller to one of these two roles. */
+function ownershipFilter(actor: Actor): Record<string, unknown> {
+  return actor.role === ROLES.HOD ? { department: actor.department } : { createdBy: actor.id };
+}
+
+const QUOTATION_WRITE_ROLES: Role[] = [ROLES.DEPARTMENT_USER, ROLES.HOD];
+
 export const quotationService = {
   async create(input: CreateQuotationInput, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER || !actor.department) {
-      throw ApiError.forbidden('Only a Department User can create a quotation');
+    if (!QUOTATION_WRITE_ROLES.includes(actor.role) || !actor.department) {
+      throw ApiError.forbidden('Only a Department User or HOD can create a quotation');
     }
 
     const vendor = await Vendor.findById(input.vendor);
     if (!vendor) throw ApiError.badRequest('Vendor not found');
-    if (vendor.createdBy.toString() !== actor.id) {
+    if (actor.role === ROLES.DEPARTMENT_USER && vendor.createdBy.toString() !== actor.id) {
       throw ApiError.forbidden('You can only create a quotation for a vendor you registered');
+    }
+    if (actor.role === ROLES.HOD && vendor.department.toString() !== actor.department) {
+      throw ApiError.forbidden('You can only create a quotation for a vendor in your department');
     }
     if (vendor.status !== 'active') {
       throw ApiError.badRequest('Only an Active vendor can be selected for a quotation');
@@ -334,6 +378,7 @@ export const quotationService = {
         .populate('vendor', 'name code category status')
         .populate('department', 'name code')
         .populate('createdBy', 'name email')
+        .populate('submittedBy', 'name email')
         .sort({ createdAt: -1 })
         .skip(pagination.skip)
         .limit(pagination.limit),
@@ -343,7 +388,9 @@ export const quotationService = {
     const approvers = await fetchApproversForRoster(items);
     const itemsWithApprovals = items.map((item) => {
       const route = resolveApprovalRoute(item.amount, ceoApprovalLimit);
-      return Object.assign(item.toObject(), { directorApprovals: mergeDirectorApprovals(item, approvers, route), approvalRoute: route });
+      const roster = mergeDirectorApprovals(item, approvers, route);
+      reconcileApprovalStatus(item, roster);
+      return Object.assign(item.toObject(), { directorApprovals: roster, approvalRoute: route });
     });
 
     return { items: itemsWithApprovals, meta: buildPaginationMeta(total, pagination) };
@@ -357,24 +404,43 @@ export const quotationService = {
     const quotation = await Quotation.findOne(filter)
       .populate('vendor')
       .populate('department', 'name code')
-      .populate('createdBy', 'name email');
+      .populate('createdBy', 'name email')
+      .populate('submittedBy', 'name email');
 
     if (!quotation) throw ApiError.notFound('Quotation not found');
 
     const route = resolveApprovalRoute(quotation.amount, ceoApprovalLimit);
-    const approvers = await fetchApproversForRoster([quotation]);
-    return Object.assign(quotation.toObject(), { directorApprovals: mergeDirectorApprovals(quotation, approvers, route), approvalRoute: route });
+    const [approvers, linkedPurchaseOrder, linkedBill] = await Promise.all([
+      fetchApproversForRoster([quotation]),
+      PurchaseOrder.findOne({ quotation: quotation._id, isDeleted: false })
+        .select('poNumber grandTotal status createdBy')
+        .populate('createdBy', 'name')
+        .lean(),
+      Bill.findOne({ quotation: quotation._id, isDeleted: { $ne: true } })
+        .select('billCode status invoiceAmount uploadedByName uploadedByRole createdAt')
+        .lean(),
+    ]);
+
+    const roster = mergeDirectorApprovals(quotation, approvers, route);
+    reconcileApprovalStatus(quotation, roster);
+
+    return Object.assign(quotation.toObject(), {
+      directorApprovals: roster,
+      approvalRoute: route,
+      linkedPurchaseOrder,
+      linkedBill,
+    });
   },
 
   async update(id: string, input: UpdateQuotationInput, actor: Actor) {
-    if (actor.role !== ROLES.DEPARTMENT_USER) {
-      throw ApiError.forbidden('Only a Department User can edit a quotation');
+    if (!QUOTATION_WRITE_ROLES.includes(actor.role)) {
+      throw ApiError.forbidden('Only a Department User or HOD can edit a quotation');
     }
 
     const quotation = await Quotation.findOneAndUpdate(
       {
         _id: id,
-        createdBy: actor.id,
+        ...ownershipFilter(actor),
         status: { $in: EDITABLE_STATUSES },
         isDeleted: { $ne: true },
       },
@@ -390,7 +456,7 @@ export const quotationService = {
   async submit(id: string, actor: Actor) {
     const draft = await Quotation.findOne({
       _id: id,
-      createdBy: actor.id,
+      ...ownershipFilter(actor),
       status: QUOTATION_STATUS.DRAFT,
       isDeleted: { $ne: true },
     }).select('amount');
@@ -401,13 +467,14 @@ export const quotationService = {
     const approvers = await ensureApproversAvailable(route);
 
     const quotation = await Quotation.findOneAndUpdate(
-      { _id: id, createdBy: actor.id, status: QUOTATION_STATUS.DRAFT, isDeleted: { $ne: true } },
-      { status: QUOTATION_STATUS.SUBMITTED, submittedAt: new Date() },
+      { _id: id, ...ownershipFilter(actor), status: QUOTATION_STATUS.DRAFT, isDeleted: { $ne: true } },
+      { status: QUOTATION_STATUS.SUBMITTED, submittedAt: new Date(), submittedBy: actor.id },
       { new: true },
     )
       .populate('vendor', 'name')
       .populate('department', 'name')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name')
+      .populate('submittedBy', 'name');
     if (!quotation) throw ApiError.notFound('Quotation not found, or it is not in Draft status');
 
     await notifyApproversOfSubmission(quotation, actor, approvers, 'quotation_submitted', 'New Quotation Submitted', 'A quotation is waiting for your review.');
@@ -418,7 +485,7 @@ export const quotationService = {
   async resubmit(id: string, actor: Actor) {
     const negotiation = await Quotation.findOne({
       _id: id,
-      createdBy: actor.id,
+      ...ownershipFilter(actor),
       status: QUOTATION_STATUS.NEGOTIATION,
       isDeleted: { $ne: true },
     }).select('amount');
@@ -429,13 +496,14 @@ export const quotationService = {
     const approvers = await ensureApproversAvailable(route);
 
     const quotation = await Quotation.findOneAndUpdate(
-      { _id: id, createdBy: actor.id, status: QUOTATION_STATUS.NEGOTIATION, isDeleted: { $ne: true } },
-      { status: QUOTATION_STATUS.RESUBMITTED, submittedAt: new Date() },
+      { _id: id, ...ownershipFilter(actor), status: QUOTATION_STATUS.NEGOTIATION, isDeleted: { $ne: true } },
+      { status: QUOTATION_STATUS.RESUBMITTED, submittedAt: new Date(), submittedBy: actor.id },
       { new: true },
     )
       .populate('vendor', 'name')
       .populate('department', 'name')
-      .populate('createdBy', 'name');
+      .populate('createdBy', 'name')
+      .populate('submittedBy', 'name');
     if (!quotation) throw ApiError.notFound('Quotation not found, or it is not in Negotiation status');
 
     await notifyApproversOfSubmission(quotation, actor, approvers, 'quotation_resubmitted', 'Quotation Resubmitted', 'A revised quotation is ready for review.');
@@ -525,7 +593,7 @@ export const quotationService = {
   async uploadPdf(id: string, fileName: string, url: string, actor: Actor) {
     const quotation = await Quotation.findOne({
       _id: id,
-      createdBy: actor.id,
+      ...ownershipFilter(actor),
       status: { $in: EDITABLE_STATUSES },
       isDeleted: { $ne: true },
     });
@@ -542,7 +610,7 @@ export const quotationService = {
   /** Soft delete — Draft only, per the Draft business rules. */
   async remove(id: string, actor: Actor) {
     const quotation = await Quotation.findOneAndUpdate(
-      { _id: id, createdBy: actor.id, status: QUOTATION_STATUS.DRAFT, isDeleted: { $ne: true } },
+      { _id: id, ...ownershipFilter(actor), status: QUOTATION_STATUS.DRAFT, isDeleted: { $ne: true } },
       { isDeleted: true },
       { new: true },
     );

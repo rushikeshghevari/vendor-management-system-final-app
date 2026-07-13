@@ -4,7 +4,7 @@ buildCommand = "npm ci && npm run build"
 
 [deploy]
 startCommand = "npm start"
-healthcheckPath = "/api/v1/auth/login"
+healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

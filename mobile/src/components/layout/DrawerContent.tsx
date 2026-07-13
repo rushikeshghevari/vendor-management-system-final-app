@@ -9,6 +9,7 @@ import { useLogoutMutation } from '@/features/auth/api/authApi';
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Administrator',
+  hod: 'HOD',
   director: 'Director',
   ceo: 'CEO',
   department_user: 'Department User',
@@ -47,6 +48,15 @@ const NAV_SUPER_ADMIN: TabNavItem[] = [
   { kind: 'tab', label: 'Reports',         icon: 'bar-chart-outline',     activeIcon: 'bar-chart',        tab: 'Reports'        },
 ];
 
+const NAV_HOD: TabNavItem[] = [
+  { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'      },
+  { kind: 'tab', label: 'Users',           icon: 'people-outline',        activeIcon: 'people',        tab: 'Users'          },
+  { kind: 'tab', label: 'Vendors',         icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'        },
+  { kind: 'tab', label: 'Quotations',      icon: 'document-text-outline', activeIcon: 'document-text', tab: 'Quotations'     },
+  { kind: 'tab', label: 'Bills',           icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'Bills'          },
+  { kind: 'tab', label: 'Purchase Orders', icon: 'clipboard-outline',     activeIcon: 'clipboard',     tab: 'PurchaseOrders' },
+];
+
 const NAV_DEPARTMENT_USER: TabNavItem[] = [
   { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'      },
   { kind: 'tab', label: 'Vendors',         icon: 'storefront-outline',    activeIcon: 'storefront',    tab: 'Vendors'        },
@@ -67,6 +77,7 @@ const NAV_DIRECTOR: TabNavItem[] = [
   { kind: 'tab', label: 'Dashboard',       icon: 'home-outline',          activeIcon: 'home',          tab: 'Dashboard'          },
   { kind: 'tab', label: 'Quotation Reviews',icon: 'document-text-outline', activeIcon: 'document-text', tab: 'PendingQuotations'  },
   { kind: 'tab', label: 'Bill Reviews',    icon: 'receipt-outline',       activeIcon: 'receipt',       tab: 'PendingBillApprovals'},
+  { kind: 'tab', label: 'Purchase Orders', icon: 'clipboard-outline',     activeIcon: 'clipboard',     tab: 'PurchaseOrders'     },
   { kind: 'tab', label: 'Reports',         icon: 'bar-chart-outline',     activeIcon: 'bar-chart',     tab: 'Reports'            },
 ];
 
@@ -86,6 +97,7 @@ const NAV_PAYMENT: TabNavItem[] = [
 
 const ROLE_PRIMARY_NAV: Record<string, TabNavItem[]> = {
   super_admin:        NAV_SUPER_ADMIN,
+  hod:                 NAV_HOD,
   department_user:    NAV_DEPARTMENT_USER,
   ceo:                NAV_CEO,
   director:           NAV_DIRECTOR,

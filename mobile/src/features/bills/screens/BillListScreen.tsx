@@ -26,6 +26,7 @@ const SKELETON_PLACEHOLDERS = [1, 2, 3, 4];
 const STATUS_TAB_LABEL: Record<BillStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
+  ai_failed: 'AI Failed',
   ai_verified: 'AI Verified',
   director_approved: 'Dir. Approved',
   director_rejected: 'Dir. Rejected',
@@ -38,15 +39,34 @@ const STATUS_TAB_LABEL: Record<BillStatus, string> = {
   completed: 'Completed',
 };
 
-// Department Users see all stages of their own bills.
-const STATUS_TABS: { value: BillStatus; label: string }[] = (
-  ['draft', 'submitted', 'ai_verified', 'director_approved', 'director_correction', 'correction_requested', 'verified', 'paid'] satisfies BillStatus[]
-).map((value) => ({ value, label: STATUS_TAB_LABEL[value] }));
+// Department Users see all stages of their own bills — one tab per status.
+const DEPT_USER_TAB_KEYS: BillStatus[] = [
+  'draft', 'submitted', 'ai_failed', 'ai_verified', 'director_approved',
+  'director_correction', 'correction_requested', 'verified', 'paid',
+];
+const STATUS_TABS = DEPT_USER_TAB_KEYS.map((value) => ({ value, label: STATUS_TAB_LABEL[value] }));
 
-// Directors see bills awaiting Financial Approval (AI_VERIFIED) plus already-decided ones.
-const DIRECTOR_STATUS_TABS = (
-  ['ai_verified', 'director_approved', 'director_rejected', 'director_correction'] satisfies BillStatus[]
-).map((value) => ({ value, label: STATUS_TAB_LABEL[value] }));
+// Director tabs are groupings of several underlying statuses — e.g. "Approved" covers every
+// stage from Director-Approved through Paid, since a Director still wants to find a bill they
+// approved even after it's moved on to Accounts/Payment. FilterChipRow only supports a single
+// value per tab, so each tab key here is a synthetic string, resolved via DIRECTOR_TAB_STATUSES
+// below rather than compared directly against `item.status`.
+const DIRECTOR_TAB_STATUSES: Record<string, BillStatus[]> = {
+  pending_ai: ['submitted', 'ai_failed'],
+  pending_approval: ['ai_verified'],
+  approved: ['director_approved', 'verified', 'payment_pending', 'paid'],
+  rejected: ['director_rejected'],
+  sent_back: ['director_correction', 'correction_requested'],
+  completed: ['completed'],
+};
+const DIRECTOR_STATUS_TABS = [
+  { value: 'pending_ai', label: 'Pending AI' },
+  { value: 'pending_approval', label: 'Pending Approval' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'sent_back', label: 'Sent Back' },
+  { value: 'completed', label: 'Completed' },
+];
 
 type Props = NativeStackScreenProps<BillsStackParamList, 'BillList'>;
 
@@ -56,22 +76,34 @@ export function BillListScreen({ navigation }: Props) {
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
   const searchInputRef = useRef<TextInput>(null);
 
-  const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery();
+  // Directors must see a newly AI-verified bill without a manual refresh — poll while this
+  // screen is focused. Other roles keep the default cache-only behavior (RefreshControl still
+  // covers manual pull-to-refresh for everyone).
+  const { data: bills, isLoading, isFetching, refetch } = useGetBillsQuery(undefined, {
+    pollingInterval: isDirector ? 15000 : undefined,
+  });
 
-  const statusTabs = isDirector ? DIRECTOR_STATUS_TABS : STATUS_TABS;
+  const statusTabs: { value: string; label: string }[] = isDirector ? DIRECTOR_STATUS_TABS : STATUS_TABS;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusTab, setStatusTab] = useState<BillStatus>(isDirector ? 'ai_verified' : 'draft');
+  const [statusTab, setStatusTab] = useState<string>(isDirector ? 'pending_ai' : 'draft');
   const [page, setPage] = useState(1);
+
+  // Director tabs resolve to a set of underlying statuses (see DIRECTOR_TAB_STATUSES); every
+  // other role's tab is exactly one status, so it resolves to its own single-element set.
+  const matchingStatuses: BillStatus[] = isDirector
+    ? (DIRECTOR_TAB_STATUSES[statusTab] ?? [])
+    : [statusTab as BillStatus];
 
   const filteredBills = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return (bills ?? []).filter((item: Bill) => {
-      const matchesStatus = item.status === statusTab;
+      const matchesStatus = matchingStatuses.includes(item.status);
       const matchesQuery = !query || item.billCode.toLowerCase().includes(query);
       return matchesStatus && matchesQuery;
     });
-  }, [bills, searchQuery, statusTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bills, searchQuery, statusTab, isDirector]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);

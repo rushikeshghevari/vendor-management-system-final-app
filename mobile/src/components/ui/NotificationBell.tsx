@@ -1,4 +1,5 @@
-import { Pressable } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
@@ -20,6 +21,18 @@ interface NotificationBellProps {
 export function NotificationBell({ size = 22, color = '#ffffff' }: NotificationBellProps) {
   const navigation = useNavigation();
   const { data: unreadCount } = useGetUnreadNotificationCountQuery();
+  const scale = useRef(new Animated.Value(1)).current;
+  const prevCountRef = useRef(unreadCount);
+
+  useEffect(() => {
+    if (unreadCount !== undefined && prevCountRef.current !== undefined && unreadCount > prevCountRef.current) {
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.25, duration: 150, useNativeDriver: true }),
+        Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }),
+      ]).start();
+    }
+    prevCountRef.current = unreadCount;
+  }, [unreadCount, scale]);
 
   const handlePress = () => {
     let target = navigation as unknown as { getParent: () => unknown; navigate: (name: string, params?: object) => void };
@@ -31,8 +44,10 @@ export function NotificationBell({ size = 22, color = '#ffffff' }: NotificationB
 
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Notifications" className="relative" hitSlop={8} onPress={handlePress}>
-      <Ionicons name="notifications-outline" size={size} color={color} />
-      <NotificationBadge count={unreadCount ?? 0} />
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons name="notifications-outline" size={size} color={color} />
+        <NotificationBadge count={unreadCount ?? 0} />
+      </Animated.View>
     </Pressable>
   );
 }

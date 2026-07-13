@@ -12,6 +12,7 @@ interface BillCardProps {
 const STATUS_LABEL: Record<BillStatus, string> = {
   draft: 'Draft',
   submitted: 'Submitted',
+  ai_failed: 'AI Failed',
   ai_verified: 'AI Verified',
   director_approved: 'Dir. Approved',
   director_rejected: 'Dir. Rejected',
@@ -27,6 +28,7 @@ const STATUS_LABEL: Record<BillStatus, string> = {
 const STATUS_VARIANT: Record<BillStatus, 'primary' | 'success' | 'danger' | 'neutral'> = {
   draft: 'neutral',
   submitted: 'primary',
+  ai_failed: 'danger',
   ai_verified: 'primary',
   director_approved: 'success',
   director_rejected: 'danger',
@@ -79,6 +81,34 @@ export function BillCard({ bill, onPress }: BillCardProps) {
           </Text>
         </View>
       </View>
+
+      {bill.purchaseOrderNumber || bill.uploadedByName || bill.aiMatchPercentage != null ? (
+        <View className="mt-2 flex-row flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-100 pt-2 dark:border-slate-800">
+          {bill.purchaseOrderNumber ? (
+            <View className="flex-row items-center gap-1.5">
+              <Ionicons name="cart-outline" size={12} color="#5f5f5f" />
+              <Text className="text-[11px] text-ink-muted dark:text-slate-500">{bill.purchaseOrderNumber}</Text>
+            </View>
+          ) : null}
+          {bill.uploadedByName ? (
+            <View className="flex-row items-center gap-1.5">
+              <Ionicons name="person-outline" size={12} color="#5f5f5f" />
+              <Text className="text-[11px] text-ink-muted dark:text-slate-500">{bill.uploadedByName}</Text>
+            </View>
+          ) : null}
+          {bill.aiMatchPercentage != null ? (
+            <View className="flex-row items-center gap-1.5">
+              <Ionicons name="sparkles-outline" size={12} color="#7C3AED" />
+              <Text
+                className="text-[11px] font-semibold"
+                style={{ color: bill.aiRisk === 'HIGH' ? '#DC2626' : bill.aiRisk === 'MEDIUM' ? '#D97706' : '#059669' }}
+              >
+                AI {bill.aiMatchPercentage}%
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </Pressable>
   );
 }

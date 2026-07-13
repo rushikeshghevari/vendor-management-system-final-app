@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import {
   Alert, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -9,10 +12,12 @@ import { AppHeader } from '@/components/layout/AppHeader';
 import { PurchaseOrderStatusBadge } from '@/features/purchaseOrders/components/PurchaseOrderStatusBadge';
 import {
   useGetPurchaseOrderByIdQuery,
+  useSharePurchaseOrderMutation,
   useTriggerAiVerificationMutation,
 } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import { AiVerificationCard } from '@/features/aiVerification/components/AiVerificationCard';
 import { useAuth } from '@/hooks/useAuth';
+import { secureStorage } from '@/utils/secureStorage';
 import type { PurchaseOrderStackParamList } from '@/navigation/types';
 
 type Props = NativeStackScreenProps<PurchaseOrderStackParamList, 'PurchaseOrderDetails'>;
@@ -50,6 +55,8 @@ export function PurchaseOrderDetailsScreen({ route, navigation }: Props) {
 
   const { data: po, isLoading, refetch } = useGetPurchaseOrderByIdQuery(purchaseOrderId);
   const [triggerAi, { isLoading: isVerifying }] = useTriggerAiVerificationMutation();
+  const [recordShare] = useSharePurchaseOrderMutation();
+  const [isSharing, setIsSharing] = useState(false);
 
   const isAccountsOrAdmin = user?.role === 'accounts' || user?.role === 'super_admin';
 
@@ -80,6 +87,43 @@ export function PurchaseOrderDetailsScreen({ route, navigation }: Props) {
     if (!po) return;
     const url = `${API_BASE}/api/v1/purchase-orders/${po.id}/pdf`;
     await Linking.openURL(url);
+  };
+
+  // Downloads the PO PDF into local storage (the /pdf route requires auth, so the token has
+  // to travel as a header — Linking.openURL can't do that), then hands it to the OS share
+  // sheet, which itself lists every installed app capable of receiving a PDF (Email, WhatsApp,
+  // Print via a print-service target on Android, AirPrint on iOS, etc.) — no per-channel
+  // integration needed. Recording happens after the sheet closes, regardless of what the user
+  // picked (or canceled), since the OS doesn't report back which target was chosen.
+  const handleShare = async () => {
+    if (!po) return;
+    setIsSharing(true);
+    try {
+      const available = await Sharing.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Sharing Unavailable', 'This device cannot open the share sheet.');
+        return;
+      }
+
+      const token = await secureStorage.getAccessToken();
+      const url = `${API_BASE}/api/v1/purchase-orders/${po.id}/pdf`;
+      const destination = new File(Paths.cache, `${po.poNumber}.pdf`);
+      const downloaded = await File.downloadFileAsync(url, destination, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        idempotent: true,
+      });
+
+      await Sharing.shareAsync(downloaded.uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Share Purchase Order ${po.poNumber}`,
+      });
+
+      recordShare({ id: po.id }).unwrap().catch(() => null);
+    } catch {
+      Alert.alert('Could Not Share', 'Failed to prepare the Purchase Order PDF for sharing.');
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   if (isLoading || !po) {
@@ -118,6 +162,12 @@ export function PurchaseOrderDetailsScreen({ route, navigation }: Props) {
           <TouchableOpacity style={styles.actionBtn} onPress={handleDownloadPdf}>
             <Ionicons name="download-outline" size={18} color="#2563EB" />
             <Text style={styles.actionBtnText}>Download PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={handleShare} disabled={isSharing}>
+            {isSharing
+              ? <ActivityIndicator size="small" color="#2563EB" />
+              : <Ionicons name="share-social-outline" size={18} color="#2563EB" />}
+            <Text style={styles.actionBtnText}>{isSharing ? 'Preparing…' : 'Share'}</Text>
           </TouchableOpacity>
           {isAccountsOrAdmin && po.billId && !po.aiVerification && (
             <TouchableOpacity

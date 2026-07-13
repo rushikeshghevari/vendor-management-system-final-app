@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 
+import { activityLogService } from '@/modules/activityLog/activityLog.service';
 import { billService } from '@/modules/bill/bill.service';
 import { ApiError } from '@/utils/ApiError';
 import { sendSuccess } from '@/utils/ApiResponse';
@@ -8,6 +9,13 @@ import { catchAsync } from '@/utils/catchAsync';
 export const billController = {
   create: catchAsync(async (req: Request, res: Response) => {
     const bill = await billService.create(req.body, req.user!);
+
+    activityLogService.record(
+      { action: 'bill_uploaded', targetId: bill.id, targetType: 'Bill', newValue: { billCode: bill.billCode, invoiceNumber: bill.invoiceNumber } },
+      req.user!,
+      req,
+    ).catch(() => null);
+
     sendSuccess(res, bill, 'Bill created', 201);
   }),
 
@@ -36,6 +44,11 @@ export const billController = {
     sendSuccess(res, bill, 'Bill fetched');
   }),
 
+  getTimeline: catchAsync(async (req: Request, res: Response) => {
+    const timeline = await billService.getTimeline(req.params.id as string, req.user!);
+    sendSuccess(res, timeline, 'Bill timeline fetched');
+  }),
+
   update: catchAsync(async (req: Request, res: Response) => {
     const bill = await billService.update(req.params.id as string, req.body, req.user!);
     sendSuccess(res, bill, 'Bill updated');
@@ -51,13 +64,41 @@ export const billController = {
     sendSuccess(res, bill, 'Bill resubmitted to Accounts');
   }),
 
+  retryAiVerification: catchAsync(async (req: Request, res: Response) => {
+    const bill = await billService.retryAiVerification(req.params.id as string, req.user!);
+    sendSuccess(res, bill, 'AI verification retried');
+  }),
+
   decide: catchAsync(async (req: Request, res: Response) => {
     const bill = await billService.decide(req.params.id as string, req.body, req.user!);
+
+    // Only "verified" maps to the spec's "Accounts Approved" activity — correction_requested
+    // and rejected are Accounts' own decision types, not an approval.
+    if (req.body?.decision === 'verified') {
+      activityLogService.record(
+        { action: 'accounts_approved', targetId: bill.id, targetType: 'Bill', newValue: { remarks: req.body?.remarks } },
+        req.user!,
+        req,
+      ).catch(() => null);
+    }
+
     sendSuccess(res, bill, 'Decision recorded');
   }),
 
   decideFinancialApproval: catchAsync(async (req: Request, res: Response) => {
     const bill = await billService.decideFinancialApproval(req.params.id as string, req.body, req.user!);
+
+    const action = req.body?.decision === 'approved' ? 'director_approved'
+      : req.body?.decision === 'rejected' ? 'director_rejected'
+      : null;
+    if (action) {
+      activityLogService.record(
+        { action, targetId: bill.id, targetType: 'Bill', newValue: { decision: req.body?.decision, remarks: req.body?.remarks } },
+        req.user!,
+        req,
+      ).catch(() => null);
+    }
+
     sendSuccess(res, bill, 'Financial approval decision recorded');
   }),
 

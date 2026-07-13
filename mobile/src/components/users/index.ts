@@ -7,3 +7,4 @@ export { DepartmentSelectCard } from '@/components/users/DepartmentSelectCard';
 export { ChipSelect } from '@/components/users/ChipSelect';
 export { DeleteUserSheet } from '@/components/users/DeleteUserSheet';
 export { ResetPasswordSheet } from '@/components/users/ResetPasswordSheet';
+export { UserBulkActionBar } from '@/components/users/UserBulkActionBar';

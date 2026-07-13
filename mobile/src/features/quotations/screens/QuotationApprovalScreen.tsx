@@ -16,7 +16,7 @@ import { PaymentSummaryCard } from '@/components/payments/PaymentSummaryCard';
 import { Screen } from '@/components/ui/Screen';
 import { ROLES } from '@/constants/roles';
 import { env } from '@/config/env';
-import { useDecideQuotationMutation, useGetQuotationsQuery } from '@/features/quotations/api/quotationsApi';
+import { useDecideQuotationMutation, useGetQuotationByIdQuery } from '@/features/quotations/api/quotationsApi';
 import { useGetPurchaseOrderByQuotationQuery } from '@/features/purchaseOrders/api/purchaseOrdersApi';
 import type { DirectorDecision, QuotationStatus } from '@/features/quotations/types';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,6 +45,23 @@ const STATUS_VARIANT: Record<QuotationStatus, 'primary' | 'success' | 'danger' |
   approved: 'success',
   rejected: 'danger',
   billed: 'primary',
+};
+
+// Short labels for the linked Bill's status, shown in the Linked Documents card — a subset
+// of BillStatus rendered here, so an unmapped value just falls back to the raw string.
+const STATUS_LABEL_BILL: Record<string, string> = {
+  draft: 'Draft',
+  submitted: 'Submitted',
+  ai_verified: 'AI Verified',
+  director_approved: 'Dir. Approved',
+  director_rejected: 'Dir. Rejected',
+  director_correction: 'Correction',
+  verified: 'Verified',
+  correction_requested: 'Correction',
+  rejected: 'Rejected',
+  payment_pending: 'Payment Pending',
+  paid: 'Paid',
+  completed: 'Completed',
 };
 
 function formatDate(isoDate?: string): string {
@@ -104,15 +121,13 @@ export function QuotationApprovalScreen({ navigation, route }: Props) {
   const isSuperAdmin = hasRole(ROLES.SUPER_ADMIN);
   const [pendingDecision, setPendingDecision] = useState<DirectorDecision | null>(null);
 
-  const { data: quotations, isLoading } = useGetQuotationsQuery();
+  const { data: quotation, isLoading } = useGetQuotationByIdQuery(quotationId, { skip: !quotationId });
   const [decideQuotation, { isLoading: isDeciding }] = useDecideQuotationMutation();
   // Fetch linked PO (if generated) to surface AI verification results to the Director.
   // 404 is handled gracefully by the queryFn — returns null, not an error.
   const { data: linkedPo } = useGetPurchaseOrderByQuotationQuery(quotationId, {
     skip: !quotationId,
   });
-
-  const quotation = quotations?.find((item) => item.id === quotationId);
 
   if (isLoading) {
     return (
@@ -235,6 +250,9 @@ export function QuotationApprovalScreen({ navigation, route }: Props) {
             <InfoChip icon="storefront-outline"    label="Vendor"       value={quotation.vendorName || '—'} />
             <InfoChip icon="calendar-outline"      label="Date"         value={formatDate(quotation.quotationDate)} />
             <InfoChip icon="person-outline"        label="Created By"   value={quotation.createdByName || '—'} />
+            {quotation.submittedByName && quotation.submittedByName !== quotation.createdByName ? (
+              <InfoChip icon="paper-plane-outline" label="Submitted By" value={quotation.submittedByName} />
+            ) : null}
             <InfoChip icon="time-outline"          label="Required By"  value={formatDate(quotation.requiredDate)} />
           </View>
         </View>
@@ -382,6 +400,46 @@ export function QuotationApprovalScreen({ navigation, route }: Props) {
               ))}
             </>
           )}
+        </DashboardCard>
+
+        {/* Linked Documents — Purchase Order and Bill generated against this Quotation, so a
+            Director can trace Quotation → PO → Bill without leaving this screen. */}
+        <DashboardCard className="mt-4">
+          <Text className="text-sm font-semibold text-ink dark:text-slate-200">Linked Documents</Text>
+          <View className="mt-3 flex-row items-center justify-between border-t border-slate-100 py-2.5 dark:border-slate-800">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="cart-outline" size={15} color={linkedPo ? '#1e88e5' : '#94a3b8'} />
+              <Text className="text-sm text-ink dark:text-slate-200">Purchase Order</Text>
+            </View>
+            {linkedPo ? (
+              <Pressable onPress={() => navigation.getParent()?.navigate('PurchaseOrders', { screen: 'PurchaseOrderDetails', params: { purchaseOrderId: linkedPo.id } })}>
+                <Text className="text-sm font-semibold text-primary-600">{linkedPo.poNumber}</Text>
+              </Pressable>
+            ) : (
+              <Text className="text-sm text-ink-muted dark:text-slate-500">Not generated yet</Text>
+            )}
+          </View>
+          {linkedPo ? (
+            <View className="flex-row items-center justify-between border-t border-slate-100 py-2.5 dark:border-slate-800">
+              <Text className="text-sm text-ink dark:text-slate-200">Remaining Balance</Text>
+              <Text className="text-sm font-semibold text-ink dark:text-white">
+                ₹ {(linkedPo.grandTotal - (quotation.linkedBill?.invoiceAmount ?? 0)).toLocaleString('en-IN')} of ₹ {linkedPo.grandTotal.toLocaleString('en-IN')}
+              </Text>
+            </View>
+          ) : null}
+          <View className="flex-row items-center justify-between border-t border-slate-100 py-2.5 dark:border-slate-800">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="receipt-outline" size={15} color={quotation.linkedBill ? '#1e88e5' : '#94a3b8'} />
+              <Text className="text-sm text-ink dark:text-slate-200">Bill</Text>
+            </View>
+            {quotation.linkedBill ? (
+              <Text className="text-sm font-semibold text-ink dark:text-white">
+                {quotation.linkedBill.billCode} · {STATUS_LABEL_BILL[quotation.linkedBill.status] ?? quotation.linkedBill.status}
+              </Text>
+            ) : (
+              <Text className="text-sm text-ink-muted dark:text-slate-500">Not uploaded yet</Text>
+            )}
+          </View>
         </DashboardCard>
 
         {/* AI Verification — shows live Gemini results if the linked PO has been verified */}

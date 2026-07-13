@@ -54,6 +54,9 @@ export interface IQuotation extends Document {
   status: QuotationStatus;
   isDeleted: boolean;
   submittedAt?: Date;
+  // Distinct from `createdBy` when an HOD submits a quotation a Department User created —
+  // ownershipFilter() in quotation.service.ts allows that, but until now nothing recorded it.
+  submittedBy?: Types.ObjectId;
   decisionAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -106,6 +109,7 @@ const quotationSchema = new Schema<IQuotation>(
     },
     isDeleted: { type: Boolean, default: false },
     submittedAt: { type: Date },
+    submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     decisionAt: { type: Date },
   },
   { timestamps: true },

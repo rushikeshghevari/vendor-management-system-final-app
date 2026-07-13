@@ -16,7 +16,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $METRO_PORT   = 8081
-$BACKEND_PORT = 5000
+$BACKEND_PORT = 5007
 $MOBILE_DIR   = Join-Path $PSScriptRoot "..\mobile"
 
 Write-Host ""
@@ -24,7 +24,11 @@ Write-Host "=== USB Dev Start ===" -ForegroundColor Cyan
 
 # ── 1. Check device ──────────────────────────────────────────────────────────
 Write-Host "`n[1/3] Checking ADB device..." -ForegroundColor Yellow
-$devices = adb devices 2>&1 | Select-String "device$"
+# Ensure the daemon is up first — starting it here (idempotent) avoids adb printing
+# "daemon not running; starting now" to stderr on the next call, which PowerShell 5.1
+# wraps as a terminating NativeCommandError under $ErrorActionPreference = "Stop".
+adb start-server | Out-Null
+$devices = adb devices | Select-String "device$"
 if (-not $devices) {
     Write-Host "ERROR: No Android device found. Connect via USB and enable USB Debugging." -ForegroundColor Red
     exit 1

@@ -75,9 +75,11 @@ export function AccountsDashboardScreen({ navigation }: Props) {
   if (drawer) drawer.setTabNavigation(navigation);
   const initials = user?.name?.charAt(0)?.toUpperCase() ?? 'U';
 
-  const { data: stats, isLoading: isLoadingStats, isFetching: isFetchingStats, refetch: refetchStats } = useGetAccountsBillStatsQuery();
-  const { data: bills, isFetching: isFetchingBills, refetch: refetchBills } = useGetBillsQuery();
-  const { data: paymentStats, isLoading: isLoadingPaymentStats } = useGetAccountsPaymentStatsQuery();
+  // Refresh automatically when a Director approves a bill — Accounts shouldn't have to
+  // reopen the screen to see it land in "Awaiting Verification".
+  const { data: stats, isLoading: isLoadingStats, isFetching: isFetchingStats, refetch: refetchStats } = useGetAccountsBillStatsQuery(undefined, { pollingInterval: 15000 });
+  const { data: bills, isFetching: isFetchingBills, refetch: refetchBills } = useGetBillsQuery(undefined, { pollingInterval: 15000 });
+  const { data: paymentStats, isLoading: isLoadingPaymentStats } = useGetAccountsPaymentStatsQuery(undefined, { pollingInterval: 15000 });
   const { data: unreadCount } = useGetUnreadNotificationCountQuery();
 
   const handleRefresh = () => { refetchStats(); refetchBills(); };

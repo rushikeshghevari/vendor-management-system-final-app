@@ -23,6 +23,32 @@ export interface AiVerificationInput {
   actor?: Actor;
 }
 
+// The Gemini SDK's ApiError often embeds the *entire* Google API error body — quota
+// metrics, doc links, retry-delay details — as JSON inside `err.message` (e.g.
+// `ApiError: {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED",...}}`).
+// That raw dump ends up in the AI audit log and, from there, verbatim in the Bill
+// History UI, which reads as a crash to a non-technical user even when the Rule Engine
+// fallback (logged separately right after) succeeded. Reduce it to a short, human line.
+function summarizeAiError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as {
+        error?: { code?: number; status?: string; message?: string };
+      };
+      const inner = parsed.error;
+      if (inner?.message) {
+        const firstLine = (inner.message.split('\n')[0] ?? inner.message).slice(0, 160);
+        return [inner.status, inner.code, firstLine].filter(Boolean).join(' · ');
+      }
+    } catch {
+      // Not JSON — fall through to plain truncation below.
+    }
+  }
+  return raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
+}
+
 // ── Build Quotation summary for Gemini prompt ──────────────────────────────────
 function buildQuotationSummary(quotation: IQuotation): Record<string, unknown> {
   return {
@@ -236,7 +262,7 @@ export async function runAiVerification(input: AiVerificationInput): Promise<IAi
         aiProvider:       'gemini',
       };
     } catch (err) {
-      geminiError = String(err);
+      geminiError = summarizeAiError(err);
       usedFallback = true;
       console.warn('[AI Verification] Gemini failed, using Rule Engine fallback:', err);
       finalResult = buildRuleEngineOnlyResult(
